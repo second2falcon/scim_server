@@ -88,11 +88,4 @@ NC_DIR=/path/to/installed/server tests/integration/run.sh   # end-to-end, needs 
 
 CI runs the same checks, plus the end-to-end suite on Nextcloud 33 (SQLite), 34 (SQLite) and 35 (PostgreSQL).
 
-### Releasing
-
-Same flow as GraphCal: set `<version>` in `appinfo/info.xml`, add a `## <version>` section to `CHANGELOG.md`, merge to `main`,
-push a tag `v<version>`. The workflow runs CI, builds the archive and creates the GitHub release; if the `appstore`
-environment has `APP_PRIVATE_KEY` and `APPSTORE_TOKEN` it also signs and publishes to the Nextcloud App Store
-(register the app id `scim_server` and request a certificate at `nextcloud/app-certificate-requests` first).
-
 Licence: AGPL-3.0-or-later.
