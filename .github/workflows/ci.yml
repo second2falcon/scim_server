@@ -1,0 +1,121 @@
+# SPDX-FileCopyrightText: 2026 SCIM Server contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, 'claude/**']
+  workflow_call: # the release workflow runs the full suite on the tagged commit first
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static:
+    name: Lint, unit tests, Psalm (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.5']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: intl, mbstring, xml
+          coverage: none
+      - run: composer install --no-interaction --no-progress
+      - name: PHP syntax
+        run: composer run lint
+      - name: Unit tests
+        run: composer run test:unit
+      - name: Psalm
+        if: matrix.php == '8.2'
+        run: composer run psalm
+      - name: Build and check the installable archive
+        if: matrix.php == '8.2'
+        run: scripts/package.sh
+      - name: Upload the archive (for manual installation and testing)
+        if: matrix.php == '8.2'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: scim_server-app-archive
+          path: build/scim_server-*.tar.gz
+          if-no-files-found: error
+
+  info-xml:
+    name: Validate appinfo/info.xml
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq libxml2-utils
+      - run: curl -sSfL -o info.xsd https://raw.githubusercontent.com/nextcloud/appstore/master/nextcloudappstore/api/v1/release/info.xsd
+      - run: xmllint appinfo/info.xml --schema info.xsd --noout
+
+  reuse:
+    name: REUSE licensing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: fsfe/reuse-action@676e2d560c9a403aa252096d99fcab3e1132b0f5 # v6.0.0
+
+  integration:
+    name: Nextcloud ${{ matrix.server }} (PHP ${{ matrix.php }}, ${{ matrix.db }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { server: stable33, php: '8.2', db: sqlite }
+          - { server: stable34, php: '8.4', db: sqlite }
+          - { server: stable35, php: '8.5', db: pgsql }
+    services:
+      postgres:
+        image: ${{ matrix.db == 'pgsql' && 'postgres:16' || '' }}
+        env:
+          POSTGRES_USER: nextcloud
+          POSTGRES_PASSWORD: nextcloud
+          POSTGRES_DB: nextcloud
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - name: Checkout Nextcloud server
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: nextcloud/server
+          ref: ${{ matrix.server }}
+          submodules: true
+          path: server
+      - name: Checkout app
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: server/apps/scim_server
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: ctype, curl, dom, fileinfo, gd, intl, mbstring, openssl, pdo_sqlite, pdo_pgsql, posix, sqlite3, xml, zip
+          coverage: none
+      - name: Install Nextcloud
+        working-directory: server
+        run: |
+          if [ "${{ matrix.db }}" = pgsql ]; then
+            DB="--database=pgsql --database-host=127.0.0.1 --database-name=nextcloud --database-user=nextcloud --database-pass=nextcloud"
+          else
+            DB="--database=sqlite"
+          fi
+          php occ maintenance:install $DB --admin-user=admin --admin-pass=admin
+          php occ app:enable scim_server
+          php occ app:list --enabled | grep scim_server
+      - name: End-to-end tests (SCIM requests against the running server)
+        run: NC_DIR=$PWD/server server/apps/scim_server/tests/integration/run.sh
+      - name: Logs on failure
+        if: failure()
+        run: |
+          tail -n 50 server/data/nextcloud.log || true
+          tail -n 50 /tmp/scim-nc.log || true
