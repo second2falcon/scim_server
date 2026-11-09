@@ -26,5 +26,12 @@
 			"php": "8.2"
 		},
 		"sort-packages": true
+	},
+	"autoload-dev": {
+		"psr-4": {
+			"OCP\\": "vendor/nextcloud/ocp/OCP/",
+			"NCU\\": "vendor/nextcloud/ocp/NCU/",
+			"OCA\\ScimServer\\Tests\\": "tests/unit/"
+		}
 	}
 }
