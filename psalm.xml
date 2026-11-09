@@ -12,4 +12,19 @@
 	<extraFiles>
 		<directory name="vendor"/>
 	</extraFiles>
+	<issueHandlers>
+		<!-- The OCP stubs don't ship Doctrine DBAL or Symfony Console, which migrations and occ commands use. -->
+		<UndefinedClass>
+			<errorLevel type="suppress">
+				<referencedClass name="Symfony\Component\Console\*"/>
+			</errorLevel>
+		</UndefinedClass>
+		<UndefinedDocblockClass>
+			<errorLevel type="suppress">
+				<referencedClass name="Doctrine\DBAL\*"/>
+			</errorLevel>
+		</UndefinedDocblockClass>
+		<!-- #[Override] needs PHP 8.3; the app supports 8.2. -->
+		<MissingOverrideAttribute errorLevel="suppress"/>
+	</issueHandlers>
 </psalm>
