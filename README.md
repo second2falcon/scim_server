@@ -34,6 +34,34 @@ Requires Nextcloud 33-35, PHP 8.2-8.5.
 authentik sends PUT for user changes, DELETE when a user leaves the application's scope and `active: false`
 when a user is deactivated. Both end in a *disabled* Nextcloud account unless you chose immediate deletion.
 
+## Opaque user ids (UUID / `sub`) with email sign-in
+
+A common setup: the Nextcloud user id is an opaque, never-changing id and people just use their email to sign in at the IdP.
+The app supports this as is: the Nextcloud user id is whatever the IdP sends as `userName`, and the email, display name and
+group membership are plain attributes that can change later. The user id itself can never be changed through SCIM.
+
+1. In authentik add a **SCIM user property mapping** (Customization → Property Mappings → SCIM Mapping) and put it **after** the
+   default *authentik default SCIM Mapping: User* in the provider, so its keys win:
+
+   ```python
+   # userName becomes the Nextcloud user id: stable and unique
+   return {
+       "userName": str(user.uuid),
+       "externalId": user.uid,
+   }
+   ```
+
+   The default mapping already sends `displayName`, `emails` and `active`; make sure the email is there, it is what Nextcloud
+   shows and mails to.
+2. Make the login resolve to the **same** id. With `user_oidc`, set the provider's *User ID mapping* to the claim that holds
+   that value. authentik's `sub` is a hash of the user id by default; in the OAuth2/OpenID provider you can change the
+   *Subject mode* to the UUID (matching `user.uuid`), or add a scope mapping that returns `user.uuid` and use that claim.
+   The value must be identical to the SCIM `userName`, including case-insensitively equal UUID formatting.
+3. Provision a test user and sign in once. If a second Nextcloud account appears, the two values differ.
+
+Names and options in authentik change between versions; check them in yours. The user ids then show as UUIDs in places like
+the admin user list, so keep the display name filled in.
+
 ## SCIM support
 
 `GET /ServiceProviderConfig`, `/Users` and `/Groups` with POST, GET (list and single), PUT, PATCH and DELETE.

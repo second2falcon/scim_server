@@ -75,6 +75,16 @@ req DELETE "/Users/$UID_BOB"; expect "delete (mode: immediate)" 204
 [[ $(occ user:list --output=json | jq 'has("bob")') == false ]] && ok "bob is gone" || bad "bob is gone" ""
 req GET "/Users/$UID_BOB"; expect "deleted user is 404" 404
 
+# --- UUID user ids (userName is an opaque id, the email is just an attribute)
+UUID=3f2b8c1e-9d4a-4e7b-8a61-5c0d2e9f7a14
+req POST /Users "{\"userName\":\"$UUID\",\"externalId\":\"ak-1\",\"displayName\":\"Carol C\",\"emails\":[{\"value\":\"carol@example.com\",\"primary\":true}],\"active\":true}"
+expect "create user with a UUID as userName" 201; UID_CAROL=$(jq -r .id <<<"$BODY")
+[[ "$(occ user:info "$UUID" --output=json | jq -r '.email + "|" + .display_name')" == "carol@example.com|Carol C" ]] && ok "UUID account has email and display name" || bad "UUID account has email and display name" ""
+req GET "/Users?filter=userName%20eq%20%22$(tr a-f A-F <<<"$UUID")%22"; field "UUID lookup is case-insensitive" .totalResults 1
+req PUT "/Users/$UID_CAROL" "{\"userName\":\"$UUID\",\"displayName\":\"Carol D\",\"emails\":[{\"value\":\"carol.d@example.com\",\"primary\":true}]}"
+expect "email and name change keep the UUID" 200; field "same userName" .userName "$UUID"
+req PUT "/Users/$UID_CAROL" '{"userName":"carol"}'; expect "userName cannot be changed" 400
+
 # --- admins are protected
 OC_PASS='Passw0rd!xx-ci' occ user:add --password-from-env boss >/dev/null
 occ group:adduser admin boss
