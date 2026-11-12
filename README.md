@@ -4,6 +4,9 @@ Let your identity provider (authentik, Okta, Microsoft Entra ID, ...) manage Nex
 Nextcloud already has a SCIM *client* (Nextcloud as the directory); this is the other direction: the IdP is the directory
 and Nextcloud follows it. It runs entirely inside Nextcloud, no extra service needed.
 
+> [!CAUTION]
+> This app is **AI-generated** code. It is covered by unit tests and an automated end-to-end suite against Nextcloud, and it has been tested by hand with authentik (SCIM provisioning) and OpenID Connect (`user_oidc`) sign-in. It is still young and security-sensitive (it creates, disables and deletes accounts): review it, try it on a test instance first, and keep backups before pointing it at production.
+
 - **Provision**: users and groups created in the IdP appear in Nextcloud, with display name, email and group membership.
 - **Update**: changes in the IdP are applied; `active: false` **disables** the account (login blocked, data kept).
 - **Deprovision**: you choose what happens when the IdP deletes an account (Settings → Administration → Security → *SCIM Server*):
