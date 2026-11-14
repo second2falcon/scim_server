@@ -6,6 +6,8 @@
 # Usage: NC_DIR=/path/to/server tests/integration/run.sh   (needs php, curl, jq)
 set -euo pipefail
 NC_DIR=${NC_DIR:?set NC_DIR to the Nextcloud server checkout}
+# This creates an admin with a known password, a SCIM token, switches to immediate deletion and deletes accounts.
+[[ "${SCIM_TEST_DISPOSABLE_INSTANCE:-}" == 1 ]] || { echo "Only for a throw-away Nextcloud: it leaves an admin with a known password and deletes accounts. Set SCIM_TEST_DISPOSABLE_INSTANCE=1 to run." >&2; exit 1; }
 PORT=${PORT:-8089}
 cd "$NC_DIR"
 occ() { php occ "$@"; }
@@ -18,6 +20,8 @@ for _ in $(seq 30); do curl -sf "http://127.0.0.1:$PORT/status.php" >/dev/null &
 
 BASE="http://127.0.0.1:$PORT/index.php/apps/scim_server/v2"
 TOKEN=$(occ scim:token:create ci)
+[[ $(curl -s -o /dev/null -w '%{http_code}' "$BASE/Users" -H "Authorization: Bearer $TOKEN") == 403 ]] && echo "ok   - plain HTTP is refused" || { echo "FAIL - plain HTTP is refused"; exit 1; }
+occ config:app:set scim_server allow_http --value=true --type=boolean >/dev/null
 fails=0
 ok() { echo "ok   - $1"; }
 bad() { echo "FAIL - $1 ($2)"; fails=$((fails + 1)); }
@@ -91,5 +95,15 @@ occ group:adduser admin boss
 req POST /Users '{"userName":"boss"}'; expect "existing account conflicts" 409
 req GET '/Users?filter=userName%20eq%20%22boss%22'; BOSS=$(jq -r '.Resources[0].id' <<<"$BODY")
 req DELETE "/Users/$BOSS"; expect "admin cannot be deprovisioned" 403
+req PUT "/Users/$BOSS" '{"userName":"boss","emails":[{"value":"evil@example.org","primary":true}]}'; expect "admin email cannot be changed" 403
+[[ "$(occ user:info boss --output=json | jq -r '.email // ""')" == "" ]] && ok "admin email untouched" || bad "admin email untouched" ""
+
+# --- bookkeeping follows deletions made outside SCIM
+req POST /Users '{"userName":"dave","externalId":"ext-dave"}'; OLD_DAVE=$(jq -r .id <<<"$BODY")
+occ user:delete dave >/dev/null
+OC_PASS='Passw0rd!xx-ci' occ user:add --password-from-env dave >/dev/null
+req GET '/Users?filter=userName%20eq%20%22dave%22'
+[[ "$(jq -r '.Resources[0].id' <<<"$BODY")" != "$OLD_DAVE" ]] && ok "a new account with an old id gets a new SCIM id" || bad "a new account with an old id gets a new SCIM id" ""
+field "and no old externalId" '.Resources[0].externalId // ""' ""
 
 echo; [[ $fails == 0 ]] && echo "all passed" || { echo "$fails failed"; tail -n 20 data/nextcloud.log 2>/dev/null || true; exit 1; }

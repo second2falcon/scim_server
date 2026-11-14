@@ -11,6 +11,9 @@ namespace OCA\ScimServer\Service;
 
 /** Pure translation of RFC 7644 PATCH operations (as sent by authentik, Okta and Entra) into plain changes. */
 class Patch {
+	/** Most operations in one PATCH, and most members in one request. */
+	public const MAX = 1000;
+
 	/**
 	 * @return list<array{op:string,attr:string,sub:?string,filter:?array{0:string,1:string},value:mixed}>
 	 */
@@ -18,6 +21,9 @@ class Patch {
 		$ops = $body['Operations'] ?? $body['operations'] ?? null;
 		if (!is_array($ops)) {
 			throw new ScimException(400, 'Operations missing', 'invalidSyntax');
+		}
+		if (count($ops) > self::MAX) {
+			throw new ScimException(413, 'Too many operations in one request, at most ' . self::MAX);
 		}
 		$out = [];
 		foreach ($ops as $op) {
@@ -133,6 +139,9 @@ class Patch {
 	/** @return list<string> */
 	public static function memberIds(mixed $members): array {
 		$ids = [];
+		if (is_array($members) && count($members) > self::MAX) {
+			throw new ScimException(413, 'Too many members in one request, at most ' . self::MAX);
+		}
 		foreach (is_array($members) ? $members : [] as $m) {
 			if (is_array($m) && is_string($m['value'] ?? null)) {
 				$ids[] = $m['value'];

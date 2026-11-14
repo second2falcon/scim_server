@@ -19,6 +19,26 @@ class FilterPatchTest extends TestCase {
 		$this->assertNull(Filter::parse(null));
 		$this->assertSame(['username', 'a "b"'], Filter::parse('userName eq "a \"b\""'));
 		$this->assertSame(['externalid', 'x'], Filter::parse(' externalId EQ "x" '));
+		$this->assertSame(['username', 'é\\x41'], Filter::parse('userName eq "\u00e9\\\\x41"')); // JSON escapes, not C ones
+	}
+
+	public function testInvalidEscapeInFilter(): void {
+		$this->expectException(ScimException::class);
+		Filter::parse('userName eq "\\x41"');
+	}
+
+	public function testRequestSizeLimits(): void {
+		foreach ([
+			fn () => Patch::parse(['Operations' => array_fill(0, Patch::MAX + 1, ['op' => 'add', 'path' => 'displayName', 'value' => 'x'])]),
+			fn () => Patch::memberIds(array_fill(0, Patch::MAX + 1, ['value' => 'u'])),
+		] as $call) {
+			try {
+				$call();
+				$this->fail('expected 413');
+			} catch (ScimException $e) {
+				$this->assertSame(413, $e->status);
+			}
+		}
 	}
 
 	public function testUnsupportedFilter(): void {

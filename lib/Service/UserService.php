@@ -11,10 +11,12 @@ namespace OCA\ScimServer\Service;
 
 use OCA\ScimServer\Db\Store;
 use OCP\AppFramework\Utility\ITimeFactory;
+use OCP\HintException;
 use OCP\IGroupManager;
 use OCP\IURLGenerator;
 use OCP\IUser;
 use OCP\IUserManager;
+use OCP\Mail\IMailer;
 use OCP\Security\ISecureRandom;
 
 class UserService {
@@ -29,6 +31,7 @@ class UserService {
 		private ITimeFactory $time,
 		private ISecureRandom $random,
 		private IURLGenerator $urls,
+		private IMailer $mailer,
 	) {
 	}
 
@@ -100,7 +103,7 @@ class UserService {
 		$password = $this->random->generate(32) . 'Aa1!';
 		try {
 			$user = $this->users->createUser($uid, $password);
-		} catch (\InvalidArgumentException $e) {
+		} catch (\InvalidArgumentException|HintException $e) { // invalid user id, or a password policy rejecting the password
 			throw new ScimException(400, $e->getMessage(), 'invalidValue');
 		}
 		if (!$user instanceof IUser) {
@@ -150,11 +153,15 @@ class UserService {
 		$n = 0;
 		foreach ($this->store->duePurges($this->time->getTime()) as $uid) {
 			$user = $this->users->get($uid);
-			if ($user !== null && !$user->isEnabled()) {
+			if ($user === null) {
+				$this->store->deleteUserRow($uid);
+			} elseif ($user->isEnabled() || ($this->settings->protectAdmins() && $this->groups->isAdmin($uid))) {
+				$this->store->clearPendingDelete($uid); // enabled again or an administrator by now: keep the account and its SCIM id
+			} else {
 				$user->delete();
+				$this->store->deleteUserRow($uid);
 				$n++;
 			}
-			$this->store->deleteUserRow($uid);
 		}
 		return $n;
 	}
@@ -162,10 +169,7 @@ class UserService {
 	private function find(string $scimId): IUser {
 		$uid = $this->store->uidByScimId($scimId);
 		$user = $uid === null ? null : $this->users->get($uid);
-		if ($user === null) {
-			if ($uid !== null) {
-				$this->store->deleteUserRow($uid); // removed in Nextcloud meanwhile
-			}
+		if ($user === null) { // rows of accounts removed in Nextcloud are cleaned up by CleanupListener
 			throw new ScimException(404, "User $scimId not found");
 		}
 		return $user;
@@ -173,17 +177,16 @@ class UserService {
 
 	private function apply(IUser $user, array $a, bool $creating = false): void {
 		$uid = $user->getUID();
+		$this->guardAdmin($user); // every change, not only disabling: a changed email is a password reset away from a takeover
 		if (isset($a['userName']) && is_string($a['userName']) && strcasecmp($a['userName'], $uid) !== 0) {
 			throw new ScimException(400, "userName cannot be changed (Nextcloud user ids are permanent): the account is '$uid', the request sent '{$a['userName']}'", 'mutability');
 		}
 		$active = null;
 		if (array_key_exists('active', $a)) {
-			$active = filter_var($a['active'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE); // Entra: "False"
+			// Entra: "False". null (also a PATCH remove) is not a boolean, and filter_var would read it as false.
+			$active = $a['active'] === null ? null : filter_var($a['active'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
 			if ($active === null) {
 				throw new ScimException(400, 'active must be a boolean', 'invalidValue');
-			}
-			if (!$active) {
-				$this->guardAdmin($user);
 			}
 		}
 		if (array_key_exists('externalId', $a)) {
@@ -199,7 +202,11 @@ class UserService {
 			$user->setDisplayName($display);
 		}
 		if (array_key_exists('emails', $a) && is_array($a['emails'])) {
-			$user->setSystemEMailAddress($this->primaryEmail($a['emails']));
+			$mail = $this->primaryEmail($a['emails']);
+			if ($mail !== '' && !$this->mailer->validateMailAddress($mail)) {
+				throw new ScimException(400, 'Invalid email address', 'invalidValue');
+			}
+			$user->setSystemEMailAddress($mail);
 		}
 		if ($active !== null) {
 			$user->setEnabled($active);
@@ -224,6 +231,9 @@ class UserService {
 
 	private function assertExternalIdFree(mixed $ext, ?string $uid): void {
 		if (is_string($ext) && $ext !== '') {
+			if (mb_strlen($ext) > 255) {
+				throw new ScimException(400, 'externalId is longer than 255 characters', 'invalidValue');
+			}
 			$owner = $this->store->uidByExternalId($ext);
 			if ($owner !== null && $owner !== $uid) {
 				throw new ScimException(409, "externalId $ext is used by another user", 'uniqueness');

@@ -42,10 +42,13 @@ jobs:
     environment: appstore
     permissions:
       contents: write
-    env:
-      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Is code signing configured?
+        id: signing
+        env:
+          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+        run: if [ -n "$APP_PRIVATE_KEY" ]; then echo "enabled=true" >> "$GITHUB_OUTPUT"; fi
       - name: Check that the tag matches appinfo/info.xml
         run: |
           version=$(php -r 'echo simplexml_load_file("appinfo/info.xml")->version;')
@@ -64,7 +67,7 @@ jobs:
             echo "::error::CHANGELOG.md has no (or an empty) section for $VERSION; add '## $VERSION' with the changes"; exit 1
           fi
       - name: Checkout Nextcloud server (its occ signs the app)
-        if: env.APP_PRIVATE_KEY != ''
+        if: steps.signing.outputs.enabled == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: nextcloud/server
@@ -72,8 +75,11 @@ jobs:
           submodules: true
           path: build/nextcloud
       - name: Get the signing key and the app certificate
-        if: env.APP_PRIVATE_KEY != ''
+        if: steps.signing.outputs.enabled == 'true'
+        env:
+          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }} # only this step sees the key itself
         run: |
+          umask 077
           key="$RUNNER_TEMP/scim_server.key" crt="$RUNNER_TEMP/scim_server.crt"
           printf '%s\n' "$APP_PRIVATE_KEY" > "$key"
           curl -sSfL -o "$crt" https://raw.githubusercontent.com/nextcloud/app-certificate-requests/HEAD/scim_server/scim_server.crt \
@@ -99,7 +105,7 @@ jobs:
             gh release create "$GITHUB_REF_NAME" "$archive" "${args[@]}"
           fi
       - name: Publish to the Nextcloud App Store
-        if: env.APP_PRIVATE_KEY != ''
+        if: steps.signing.outputs.enabled == 'true'
         env:
           APPSTORE_TOKEN: ${{ secrets.APPSTORE_TOKEN }}
         run: |
@@ -114,3 +120,6 @@ jobs:
           # 201: new release; 200: the same version again (re-run), updated.
           if [ "$status" != 201 ] && [ "$status" != 200 ]; then echo "::error::The App Store answered HTTP $status"; exit 1; fi
           echo "Published SCIM Server $VERSION to the App Store: https://apps.nextcloud.com/apps/scim_server" >> $GITHUB_STEP_SUMMARY
+      - name: Remove the signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/scim_server.key"

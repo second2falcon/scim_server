@@ -16,7 +16,8 @@ and Nextcloud follows it. It runs entirely inside Nextcloud, no extra service ne
   Becoming active again re-enables the account and cancels a scheduled deletion.
 - Groups: create, rename, delete (deleting a group never deletes accounts), membership via PUT or PATCH.
 - Accounts that already exist in Nextcloud (for example created by SSO login) are adopted by SCIM, never duplicated.
-- Administrators and the `admin` group are protected from SCIM by default (switchable).
+- Administrators and the `admin` group are protected from SCIM by default (switchable): SCIM cannot change, disable or
+  delete them. If your IdP also syncs an administrator, it gets `403` for that account; that is intended.
 
 Requires Nextcloud 33-35, PHP 8.2-8.5.
 
@@ -138,8 +139,25 @@ only feed it. Renaming a group changes its display name; its Nextcloud group id 
 
 ## Security
 
-Tokens are random, stored as SHA-256 hashes, compared in constant time and revocable. Always serve Nextcloud over HTTPS.
-SCIM requests are only accepted with a valid token and bypass login/CSRF by design. See [SECURITY.md](SECURITY.md).
+Tokens are random, stored as SHA-256 hashes, compared in constant time and revocable. SCIM requests are only accepted
+with a valid token, over HTTPS, and bypass login/CSRF by design. Failed attempts are logged and slowed down; every
+changing request is logged with the token that made it (Nextcloud log, level *info*). See [SECURITY.md](SECURITY.md).
+
+**Treat a SCIM token like an administrator password.** Whoever holds it can create accounts, change any non-administrator
+account's email address, disable or delete accounts, and change every group except `admin`, including accounts and groups
+that were not created through SCIM. Recommended on an SSO-only instance:
+
+- Turn off password reset, in `config/config.php`: `'lost_password_link' => 'disabled'`. Otherwise a token holder can
+  change an account's email and reset its password, and any provisioned user can set a local password and sign in
+  without the IdP (and without its MFA). Also consider `'hide_login_form' => true`.
+- Protect groups that carry privileges (delegated administration, groups excluded from two-factor enforcement, groups
+  with sensitive shares): `occ config:app:set scim_server protected_groups --value="gid1,gid2"`. SCIM then answers `403`
+  to changes of those groups.
+- A disabled account can no longer sign in, but its public share links and shares to other people keep working until the
+  account is deleted.
+- Behind a reverse proxy Nextcloud must know that requests arrive over HTTPS (`overwriteprotocol`, `trusted_proxies`),
+  or SCIM answers `403`. For a local test without TLS only:
+  `occ config:app:set scim_server allow_http --value=true --type=boolean`.
 
 ## Development
 
@@ -147,8 +165,11 @@ SCIM requests are only accepted with a valid token and bypass login/CSRF by desi
 composer install
 composer run lint && composer run test:unit && composer run psalm
 scripts/package.sh                      # build/scim_server-<version>.tar.gz
-NC_DIR=/path/to/installed/server tests/integration/run.sh   # end-to-end, needs the app enabled, jq and curl
+SCIM_TEST_DISPOSABLE_INSTANCE=1 NC_DIR=/path/to/installed/server tests/integration/run.sh   # end-to-end, needs the app enabled, jq and curl
 ```
+
+Run the end-to-end suite **only against a throw-away Nextcloud**: it creates an administrator with a known password and a
+SCIM token, switches to immediate deletion and deletes accounts.
 
 CI runs the same checks, plus the end-to-end suite on Nextcloud 33 (SQLite), 34 (SQLite) and 35 (PostgreSQL).
 

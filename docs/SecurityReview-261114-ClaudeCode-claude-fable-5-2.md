@@ -7,6 +7,10 @@
 | Commit reviewed | `46e88fe` (branch `claude/optimistic-carson-d8nhqt`) |
 | Scope | Every tracked file: `lib/`, `appinfo/`, `js/`, `templates/`, `scripts/`, `tests/`, `.github/workflows/`, `composer.json`, docs |
 
+> **Follow-up, same day:** fixes for these findings were implemented after this review; see `CHANGELOG.md` (Unreleased).
+> Not changed: token expiry and scopes (L-3), batching of group member lookups (L-6), pinning of the App Store XSD (L-9),
+> and I-1. `docs/HANDOVER.md` (L-8) was removed from the tree but is still in the git history.
+
 ## Summary
 
 The code is small (about 1,300 lines of PHP) and the basics are done well: all SQL goes through the query builder with

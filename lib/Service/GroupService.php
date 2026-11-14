@@ -140,10 +140,7 @@ class GroupService {
 	private function find(string $scimId): IGroup {
 		$gid = $this->store->gidByScimId($scimId);
 		$group = $gid === null ? null : $this->groups->get($gid);
-		if ($group === null) {
-			if ($gid !== null) {
-				$this->store->deleteGroupRow($gid);
-			}
+		if ($group === null) { // rows of groups removed in Nextcloud are cleaned up by CleanupListener
 			throw new ScimException(404, "Group $scimId not found");
 		}
 		return $group;
@@ -179,6 +176,9 @@ class GroupService {
 
 	private function assertExternalIdFree(mixed $ext, ?string $gid): void {
 		if (is_string($ext) && $ext !== '') {
+			if (mb_strlen($ext) > 255) {
+				throw new ScimException(400, 'externalId is longer than 255 characters', 'invalidValue');
+			}
 			$owner = $this->store->gidByExternalId($ext);
 			if ($owner !== null && $owner !== $gid) {
 				throw new ScimException(409, "externalId $ext is used by another group", 'uniqueness');
@@ -229,6 +229,9 @@ class GroupService {
 	private function guardAdmin(IGroup $group): void {
 		if ($this->settings->protectAdmins() && $group->getGID() === 'admin') {
 			throw new ScimException(403, 'The admin group is protected from SCIM (see the app settings)');
+		}
+		if (in_array($group->getGID(), $this->settings->protectedGroups(), true)) {
+			throw new ScimException(403, 'This group is protected from SCIM (app config protected_groups)');
 		}
 	}
 }

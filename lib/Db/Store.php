@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace OCA\ScimServer\Db;
 
 use OCP\AppFramework\Utility\ITimeFactory;
+use OCP\DB\Exception;
 use OCP\IDBConnection;
 use OCP\Security\ISecureRandom;
 
@@ -52,14 +53,17 @@ class Store {
 		$q->delete('scim_tokens')->where($q->expr()->eq('id', $q->createNamedParameter($id)))->executeStatement();
 	}
 
-	/** Valid token? Also records last use (at most once a minute per token). */
-	public function checkToken(string $token): bool {
+	/**
+	 * The token's id and label if it is valid, else null. Also records last use (at most once a minute per token).
+	 * @return array{id:int,label:string}|null
+	 */
+	public function checkToken(string $token): ?array {
 		$q = $this->db->getQueryBuilder();
-		$q->select('id', 'token_hash', 'last_used')->from('scim_tokens')
+		$q->select('id', 'label', 'token_hash', 'last_used')->from('scim_tokens')
 			->where($q->expr()->eq('token_hash', $q->createNamedParameter(hash('sha256', $token))));
 		$row = $q->executeQuery()->fetch();
 		if (!$row || !hash_equals((string)$row['token_hash'], hash('sha256', $token))) {
-			return false;
+			return null;
 		}
 		$now = $this->time->getTime();
 		if ($row['last_used'] === null || $now - (int)$row['last_used'] >= 60) {
@@ -67,7 +71,7 @@ class Store {
 			$u->update('scim_tokens')->set('last_used', $u->createNamedParameter($now))
 				->where($u->expr()->eq('id', $u->createNamedParameter((int)$row['id'])))->executeStatement();
 		}
-		return true;
+		return ['id' => (int)$row['id'], 'label' => (string)$row['label']];
 	}
 
 	// ---- users ----
@@ -93,6 +97,17 @@ class Store {
 	public function setPendingDelete(string $uid, ?int $at): void {
 		$this->userRow($uid);
 		$this->set('scim_users', 'uid', $uid, 'pending_delete_at', $at);
+	}
+
+	/** Cancel the scheduled deletion of one account, or of all (null). Never creates a row. */
+	public function clearPendingDelete(?string $uid = null): void {
+		$q = $this->db->getQueryBuilder();
+		$q->update('scim_users')->set('pending_delete_at', $q->createNamedParameter(null))
+			->where($q->expr()->isNotNull('pending_delete_at'));
+		if ($uid !== null) {
+			$q->andWhere($q->expr()->eq('uid', $q->createNamedParameter($uid)));
+		}
+		$q->executeStatement();
 	}
 
 	/** @return list<string> uids whose purge date has passed */
@@ -145,7 +160,14 @@ class Store {
 				'scim_id' => $i->createNamedParameter($row['scim_id']),
 				'created_at' => $i->createNamedParameter($row['created_at']),
 			];
-			$i->insert($table)->values($values)->executeStatement();
+			try {
+				$i->insert($table)->values($values)->executeStatement();
+			} catch (Exception $e) {
+				if ($e->getReason() !== Exception::REASON_UNIQUE_CONSTRAINT_VIOLATION) {
+					throw $e;
+				}
+				return $this->row($table, $key, $id); // a concurrent request created the row: use theirs
+			}
 		}
 		$row['created_at'] = (int)$row['created_at'];
 		$row['pending_delete_at'] = isset($row['pending_delete_at']) ? (int)$row['pending_delete_at'] : null;

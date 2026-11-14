@@ -48,6 +48,18 @@ class GroupServiceTest extends TestCase {
 		return $g;
 	}
 
+	public function testProtectedGroupsCannotBeChanged(): void {
+		$g = $this->group('finance');
+		$this->settings->method('protectedGroups')->willReturn(['finance']);
+		$g->expects($this->never())->method('delete');
+		try {
+			$this->svc->delete('gsid');
+			$this->fail('expected 403');
+		} catch (ScimException $e) {
+			$this->assertSame(403, $e->status);
+		}
+	}
+
 	private function member(string $uid): IUser&MockObject {
 		$u = $this->createMock(IUser::class);
 		$u->method('getUID')->willReturn($uid);
