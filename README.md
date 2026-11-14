@@ -67,13 +67,26 @@ Only do this with a provider you trust: it can now log in as any account with th
 3. **SCIM provider:** create a *SCIM Mapping* (Customization → Property Mappings) with this expression:
 
    ```python
-   return {"userName": str(user.uuid), "externalId": str(user.uuid)}
+   return {"userName": str(request.user.uuid), "externalId": str(request.user.uuid)}
    ```
 
    and attach it to the SCIM provider's *User Property Mappings* **together with** the default
    *authentik default SCIM Mapping: User* (which supplies `displayName`, `emails`, `active`). authentik merges all attached
-   mappings **in alphabetical order of their names**, later names winning, so name yours so it sorts after the default one
-   (for example `z-uuid`). Attachment order does not matter.
+   mappings **in alphabetical order of their names**, later names winning, so name yours so it sorts after the default one:
+   `z-uuid` works. Upper case sorts before lower case, so a name like `SCIM user mapping` sorts *before*
+   `authentik default …` and gets overwritten. Attachment order does not matter.
+
+   Use `request.user`, as the default mapping does: a bare `user` fails in authentik 2026.8 with
+   `NameError: name 'user' is not defined` (shown as *Failed to evaluate property-mapping* under Events).
+
+This mapping is for SCIM only; you do not use it in the OIDC config. Both sides arrive at the same UUID separately:
+
+| Path | Where the UUID comes from | Configured in |
+|---|---|---|
+| SCIM provisioning | `userName` from the `z-uuid` SCIM mapping | authentik SCIM provider → *User Property Mappings* |
+| OIDC login | the `sub` claim (*Subject mode* = Based on user UUID) | authentik OAuth2 provider; `user_oidc` *User ID mapping* = `sub` |
+
+The other `user_oidc` mappings (display name, email, groups) can stay as they are; only the user id has to match.
 
 **Start clean.** If accounts were already provisioned with another `userName` (for example the username), authentik will keep
 sending the new UUID for them and the app refuses (`userName cannot be changed`). Remove those accounts in Nextcloud and
