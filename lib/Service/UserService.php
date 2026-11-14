@@ -174,7 +174,7 @@ class UserService {
 	private function apply(IUser $user, array $a, bool $creating = false): void {
 		$uid = $user->getUID();
 		if (isset($a['userName']) && is_string($a['userName']) && strcasecmp($a['userName'], $uid) !== 0) {
-			throw new ScimException(400, 'userName cannot be changed', 'mutability');
+			throw new ScimException(400, "userName cannot be changed (Nextcloud user ids are permanent): the account is '$uid', the request sent '{$a['userName']}'", 'mutability');
 		}
 		$active = null;
 		if (array_key_exists('active', $a)) {

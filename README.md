@@ -37,33 +37,59 @@ Requires Nextcloud 33-35, PHP 8.2-8.5.
 authentik sends PUT for user changes, DELETE when a user leaves the application's scope and `active: false`
 when a user is deactivated. Both end in a *disabled* Nextcloud account unless you chose immediate deletion.
 
-## Opaque user ids (UUID / `sub`) with email sign-in
+## Opaque user ids (UUID) with email sign-in
 
-A common setup: the Nextcloud user id is an opaque, never-changing id and people just use their email to sign in at the IdP.
-The app supports this as is: the Nextcloud user id is whatever the IdP sends as `userName`, and the email, display name and
-group membership are plain attributes that can change later. The user id itself can never be changed through SCIM.
+The Nextcloud user id is whatever the IdP sends as SCIM `userName`, and it can never be changed afterwards (SCIM answers
+`400 mutability` if a later request sends a different `userName` for the same account). Email, display name and groups stay
+changeable. For a stable id use an immutable value, not the username or email.
 
-1. In authentik add a **SCIM user property mapping** (Customization → Property Mappings → SCIM Mapping) and put it **after** the
-   default *authentik default SCIM Mapping: User* in the provider, so its keys win:
+**The id in SCIM `userName` and the id `user_oidc` derives at login must be the same string**, otherwise people get a second,
+empty account on first login. How `user_oidc` derives it (from its source, `LocalIdService`/`LoginController`):
+
+| `user_oidc` provider setting | Nextcloud user id |
+|---|---|
+| *Use unique user id* **on** (default) | `sha256(providerId + claim)`: never matches a SCIM account, you get duplicates |
+| *Use unique user id* **off** | the claim named in *User ID mapping*, unchanged: matches the SCIM account |
+
+So: turn **unique user id off** (and leave *provider-based ids* off), and point the user id mapping at the claim that equals `userName`.
+An existing local account with that id is then adopted at login (Nextcloud's `soft_auto_provision` setting, on by default).
+Only do this with a provider you trust: it can now log in as any account with the same id (that is what the warning in the setting says).
+
+### authentik
+
+1. **OAuth2/OpenID provider:** set *Subject mode* to **Based on user UUID**. `sub` is now the user's UUID.
+2. **`user_oidc`:** provider with *User ID mapping* = `sub` and *Use unique user id* off:
+
+   ```bash
+   occ user_oidc:provider authentik -c <client id> --clientsecret <secret> -d https://authentik.example.com/application/o/<slug>/.well-known/openid-configuration \
+     --unique-uid=0 --mapping-uid=sub --group-provisioning=0
+   ```
+3. **SCIM provider:** create a *SCIM Mapping* (Customization → Property Mappings) with this expression:
 
    ```python
-   # userName becomes the Nextcloud user id: stable and unique
-   return {
-       "userName": str(user.uuid),
-       "externalId": user.uid,
-   }
+   return {"userName": str(user.uuid), "externalId": str(user.uuid)}
    ```
 
-   The default mapping already sends `displayName`, `emails` and `active`; make sure the email is there, it is what Nextcloud
-   shows and mails to.
-2. Make the login resolve to the **same** id. With `user_oidc`, set the provider's *User ID mapping* to the claim that holds
-   that value. authentik's `sub` is a hash of the user id by default; in the OAuth2/OpenID provider you can change the
-   *Subject mode* to the UUID (matching `user.uuid`), or add a scope mapping that returns `user.uuid` and use that claim.
-   The value must be identical to the SCIM `userName`, including case-insensitively equal UUID formatting.
-3. Provision a test user and sign in once. If a second Nextcloud account appears, the two values differ.
+   and attach it to the SCIM provider's *User Property Mappings* **together with** the default
+   *authentik default SCIM Mapping: User* (which supplies `displayName`, `emails`, `active`). authentik merges all attached
+   mappings **in alphabetical order of their names**, later names winning, so name yours so it sorts after the default one
+   (for example `z-uuid`). Attachment order does not matter.
 
-Names and options in authentik change between versions; check them in yours. The user ids then show as UUIDs in places like
-the admin user list, so keep the display name filled in.
+**Start clean.** If accounts were already provisioned with another `userName` (for example the username), authentik will keep
+sending the new UUID for them and the app refuses (`userName cannot be changed`). Remove those accounts in Nextcloud and
+remove the provider's synced objects in authentik (or just create a fresh SCIM provider), then run a new sync.
+Existing users cannot be renamed in Nextcloud; moving an existing instance to UUID ids means migrating the users' data.
+
+### Microsoft Entra ID
+
+Entra's `sub` is different for every application, and `preferred_username`/`upn`/`email` can change, so neither is a good id.
+Use the immutable object id: **`oid`**.
+
+- `user_oidc`: *User ID mapping* = `oid` and *Use unique user id* off (the `oid` claim is in the ID token for work/school accounts).
+- Entra provisioning: in the application's attribute mappings send the **object id** as SCIM `userName` (source attribute
+  `objectId`), and keep `userPrincipalName` out of `userName`. Entra uses PATCH, which the app supports.
+
+I derived the Entra settings from Microsoft's claim reference, not from a live tenant: verify the attribute names in your portal.
 
 ## SCIM support
 
