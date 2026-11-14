@@ -98,11 +98,33 @@ Existing users cannot be renamed in Nextcloud; moving an existing instance to UU
 Entra's `sub` is different for every application, and `preferred_username`/`upn`/`email` can change, so neither is a good id.
 Use the immutable object id: **`oid`**.
 
-- `user_oidc`: *User ID mapping* = `oid` and *Use unique user id* off (the `oid` claim is in the ID token for work/school accounts).
-- Entra provisioning: in the application's attribute mappings send the **object id** as SCIM `userName` (source attribute
-  `objectId`), and keep `userPrincipalName` out of `userName`. Entra uses PATCH, which the app supports.
+1. **One application for login and provisioning:** *Enterprise applications → New application → Create your own
+   application → Integrate any other application (non-gallery)*. This also creates an App registration; there add a Web
+   redirect URI `https://<nextcloud>/apps/user_oidc/code` and a client secret. Users and groups assigned to the enterprise
+   application then decide both who can log in and who is provisioned.
+2. **`user_oidc`:** discovery URL `https://login.microsoftonline.com/<tenant-id>/v2.0/.well-known/openid-configuration`,
+   *User ID mapping* = `oid`, *Use unique user id* off, provider-based ids off. The `oid` claim is in the ID token for
+   work/school accounts. Turn *group provisioning* off and let SCIM manage groups: Entra's `groups` claim holds group object
+   ids, not names, so it would create a second set of groups.
+3. **Provisioning** (enterprise application → *Provisioning*, mode *Automatic*): *Tenant URL*
+   `https://<nextcloud>/index.php/apps/scim_server/v2`, *Secret token* = a token from this app's admin settings, then
+   *Test Connection*. Change the user attribute mappings **before the first cycle** (a later `userName` change gets
+   `400 mutability`):
 
-I derived the Entra settings from Microsoft's claim reference, not from a live tenant: verify the attribute names in your portal.
+   | SCIM attribute | Entra source attribute | |
+   |---|---|---|
+   | `userName` | `objectId` | default is `userPrincipalName`: change it, and give this mapping matching precedence 1 |
+   | `externalId` | `objectId` | default is `mailNickname` |
+   | `emails[type eq "work"].value` | `mail` | |
+   | `displayName` | `displayName` | |
+   | `active` | `Switch([IsSoftDeleted], …)` | keep the default |
+
+   Group mappings can stay as they are (`displayName`, `members`). Scope: *Sync only assigned users and groups*.
+   Entra uses PATCH, including its capitalised operations, which the app supports.
+4. **Test** with *Provision on demand* for one user (a regular cycle runs about every 40 minutes): the Nextcloud account
+   id must be the user's *Object ID*. Then sign in with Entra and check that no second account appears.
+
+I derived the Entra settings from Microsoft's documentation, not from a live tenant: verify the attribute names in your portal.
 
 ## SCIM support
 
