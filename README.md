@@ -15,7 +15,10 @@ and Nextcloud follows it. It runs entirely inside Nextcloud, no extra service ne
   - delete immediately.
   Becoming active again re-enables the account and cancels a scheduled deletion.
 - Groups: create, rename, delete (deleting a group never deletes accounts), membership via PUT or PATCH.
-- Accounts that already exist in Nextcloud (for example created by SSO login) are adopted by SCIM, never duplicated.
+- SCIM only sees and changes the accounts and groups **it created**. Everything else in Nextcloud (local accounts,
+  administrators, groups made by hand) is invisible to the identity provider. To let it take over accounts that already
+  exist (for example created by SSO login before SCIM was set up), switch off *Only manage accounts and groups that were
+  created through SCIM* in the settings: then every account and group is listed and can be adopted, never duplicated.
 - Administrators and the `admin` group are protected from SCIM by default (switchable): SCIM cannot change, disable or
   delete them. If your IdP also syncs an administrator, it gets `403` for that account; that is intended.
 
@@ -144,8 +147,9 @@ with a valid token, over HTTPS, and bypass login/CSRF by design. Failed attempts
 changing request is logged with the token that made it (Nextcloud log, level *info*). See [SECURITY.md](SECURITY.md).
 
 **Treat a SCIM token like an administrator password.** Whoever holds it can create accounts, change any non-administrator
-account's email address, disable or delete accounts, and change every group except `admin`, including accounts and groups
-that were not created through SCIM. Recommended on an SSO-only instance:
+account's email address, disable or delete accounts, and change every group except `admin`. By default that is limited to
+the accounts and groups created through SCIM; with that setting off it covers everything in Nextcloud. Recommended on an
+SSO-only instance:
 
 - Turn off password reset, in `config/config.php`: `'lost_password_link' => 'disabled'`. Otherwise a token holder can
   change an account's email and reset its password, and any provisioned user can set a local password and sign in

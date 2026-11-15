@@ -9,6 +9,7 @@ Security fixes from the review in `docs/SecurityReview-261114-ClaudeCode-claude-
 - Failed token attempts are logged and throttled; changing requests are logged with the token used.
 - Creating or revoking tokens and saving the settings ask for password confirmation.
 - Accounts and groups deleted in Nextcloud lose their SCIM bookkeeping at once, so a later account with the same id cannot inherit an old SCIM id or deletion date. Enabling an account in Nextcloud cancels its scheduled deletion. The purge job never deletes administrators, and switching away from "delete later" cancels all scheduled deletions.
+- **SCIM is limited to the accounts and groups it created** (new setting, on by default). Other accounts and groups are not listed, cannot be changed and are not removed from groups by a membership sync. Switch the setting off to let the identity provider adopt existing accounts, as before. On upgrade, accounts and groups that have an `externalId` count as created through SCIM.
 - New app config `protected_groups`: further groups that SCIM may not change.
 - Email addresses are validated; `externalId` is limited to 255 characters and unique in the database; `active: null` is rejected instead of disabling the account; filter values are read as JSON strings; at most 1000 operations or members per request.
 - The end-to-end test script refuses to run unless `SCIM_TEST_DISPOSABLE_INSTANCE=1` is set.

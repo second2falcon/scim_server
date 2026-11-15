@@ -39,7 +39,7 @@ class UserServiceTest extends TestCase {
 		$time->method('getTime')->willReturn(1000);
 		$random = $this->createMock(ISecureRandom::class);
 		$random->method('generate')->willReturn('r');
-		$this->store->method('userRow')->willReturn(['scim_id' => 'sid', 'external_id' => null, 'created_at' => 1, 'pending_delete_at' => null]);
+		$this->store->method('userRow')->willReturn(['scim_id' => 'sid', 'external_id' => null, 'created_at' => 1, 'pending_delete_at' => null, 'managed' => false]);
 		$mailer = $this->createMock(IMailer::class);
 		$mailer->method('validateMailAddress')->willReturnCallback(fn (string $m) => str_contains($m, '@'));
 		$this->svc = new UserService($this->um, $this->gm, $this->store, $this->settings, $time, $random, $this->createMock(IURLGenerator::class), $mailer);
@@ -62,6 +62,7 @@ class UserServiceTest extends TestCase {
 		$u->expects($this->once())->method('setDisplayName')->with('Ann B');
 		$u->expects($this->once())->method('setSystemEMailAddress')->with('a@example.com');
 		$this->store->expects($this->once())->method('setUserExternalId')->with('ann', 'ext1');
+		$this->store->expects($this->once())->method('setUserManaged')->with('ann');
 		$res = $this->svc->create([
 			'userName' => 'ann', 'externalId' => 'ext1', 'name' => ['givenName' => 'Ann', 'familyName' => 'B'],
 			'emails' => [['value' => 'a@example.com', 'primary' => true]],
@@ -171,6 +172,26 @@ class UserServiceTest extends TestCase {
 				$this->fail('expected 400');
 			} catch (ScimException $e) {
 				$this->assertSame(400, $e->status);
+			}
+		}
+	}
+
+	public function testAccountsNotCreatedThroughScimAreInvisible(): void {
+		$u = $this->user('old'); // the mocked row has no "managed" flag
+		$this->settings->method('managedOnly')->willReturn(true);
+		$u->expects($this->never())->method('setEnabled');
+		$u->expects($this->never())->method('setSystemEMailAddress');
+		$this->assertSame(0, $this->svc->list('userName eq "old"', 1, 100)['totalResults']);
+		foreach ([
+			fn () => $this->svc->get('sid'),
+			fn () => $this->svc->replace('sid', ['emails' => [['value' => 'evil@example.org']]]),
+			fn () => $this->svc->delete('sid'),
+		] as $call) {
+			try {
+				$call();
+				$this->fail('expected 404');
+			} catch (ScimException $e) {
+				$this->assertSame(404, $e->status);
 			}
 		}
 	}

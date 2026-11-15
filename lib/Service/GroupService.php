@@ -33,6 +33,9 @@ class GroupService {
 		$members = [];
 		// ponytail: one lookup per member; batch if groups with thousands of members matter
 		foreach ($group->getUsers() as $u) {
+			if (!$this->userVisible($u->getUID())) {
+				continue;
+			}
 			$members[] = ['value' => $this->store->userRow($u->getUID())['scim_id'], 'display' => $u->getDisplayName()];
 		}
 		$res = [
@@ -66,7 +69,9 @@ class GroupService {
 				'externalid' => ($gid = $this->store->gidByExternalId($f[1])) !== null ? $this->groups->get($gid) : null,
 				default => throw new ScimException(400, "Cannot filter on $f[0]", 'invalidFilter'),
 			};
-			$all = $group === null ? [] : [$group];
+			$all = $group === null || !$this->groupVisible($group->getGID()) ? [] : [$group];
+		} elseif ($this->settings->managedOnly()) {
+			$all = array_values(array_filter(array_map(fn (string $gid) => $this->groups->get($gid), $this->store->managedGroups())));
 		} else {
 			$all = array_values($this->groups->search(''));
 		}
@@ -93,7 +98,7 @@ class GroupService {
 		if (!$group instanceof IGroup) {
 			throw new ScimException(400, "Cannot create group $name", 'invalidValue');
 		}
-		$this->store->groupRow($group->getGID());
+		$this->store->setGroupManaged($group->getGID());
 		$this->setExternalId($group, $body);
 		$this->syncMembers($group, Patch::memberIds($body['members'] ?? []));
 		return $this->toScim($group);
@@ -140,7 +145,7 @@ class GroupService {
 	private function find(string $scimId): IGroup {
 		$gid = $this->store->gidByScimId($scimId);
 		$group = $gid === null ? null : $this->groups->get($gid);
-		if ($group === null) { // rows of groups removed in Nextcloud are cleaned up by CleanupListener
+		if ($group === null || !$this->groupVisible($group->getGID())) { // rows of groups removed in Nextcloud are cleaned up by CleanupListener
 			throw new ScimException(404, "Group $scimId not found");
 		}
 		return $group;
@@ -192,7 +197,7 @@ class GroupService {
 		foreach ($scimIds as $id) {
 			$uid = $this->store->uidByScimId($id);
 			$user = $uid === null ? null : $this->users->get($uid);
-			if ($user === null) {
+			if ($user === null || !$this->userVisible($user->getUID())) {
 				throw new ScimException(400, "Unknown member $id", 'invalidValue');
 			}
 			$out[$user->getUID()] = $user;
@@ -219,11 +224,20 @@ class GroupService {
 	private function syncMembers(IGroup $group, array $ids): void {
 		$want = $this->resolve($ids);
 		foreach ($group->getUsers() as $u) {
-			if (!isset($want[$u->getUID()])) {
+			// Members that SCIM cannot see (added in Nextcloud, not created through SCIM) are left alone.
+			if (!isset($want[$u->getUID()]) && $this->userVisible($u->getUID())) {
 				$group->removeUser($u);
 			}
 		}
 		$this->addMembers($group, $ids);
+	}
+
+	private function userVisible(string $uid): bool {
+		return !$this->settings->managedOnly() || $this->store->userRow($uid)['managed'];
+	}
+
+	private function groupVisible(string $gid): bool {
+		return !$this->settings->managedOnly() || $this->store->groupRow($gid)['managed'];
 	}
 
 	private function guardAdmin(IGroup $group): void {

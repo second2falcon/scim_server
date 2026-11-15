@@ -93,6 +93,13 @@ req PUT "/Users/$UID_CAROL" '{"userName":"carol"}'; expect "userName cannot be c
 OC_PASS='Passw0rd!xx-ci' occ user:add --password-from-env boss >/dev/null
 occ group:adduser admin boss
 req POST /Users '{"userName":"boss"}'; expect "existing account conflicts" 409
+# --- by default SCIM only sees what it created
+req GET '/Users?filter=userName%20eq%20%22boss%22'; field "account not created through SCIM is invisible" .totalResults 0
+req GET /Users; field "and not listed" '[.Resources[].userName] | index("boss") // "absent"' absent
+occ group:add locals >/dev/null
+req GET '/Groups?filter=displayName%20eq%20%22locals%22'; field "group not created through SCIM is invisible" .totalResults 0
+occ config:app:set scim_server managed_only --value=false --type=boolean >/dev/null
+req GET '/Users?filter=userName%20eq%20%22boss%22'; field "visible once existing accounts may be adopted" .totalResults 1
 req GET '/Users?filter=userName%20eq%20%22boss%22'; BOSS=$(jq -r '.Resources[0].id' <<<"$BODY")
 req DELETE "/Users/$BOSS"; expect "admin cannot be deprovisioned" 403
 req PUT "/Users/$BOSS" '{"userName":"boss","emails":[{"value":"evil@example.org","primary":true}]}'; expect "admin email cannot be changed" 403

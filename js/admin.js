@@ -23,6 +23,7 @@
 			deleteMode: $('scim-mode').value,
 			purgeDays: parseInt($('scim-days').value, 10) || 0,
 			protectAdmins: $('scim-protect').checked,
+			managedOnly: $('scim-managed').checked,
 		})
 		$('scim-status').textContent = r.ok ? '✓' : (r.json.error || '✗')
 	}))

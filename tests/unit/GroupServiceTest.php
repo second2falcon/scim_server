@@ -27,14 +27,15 @@ class GroupServiceTest extends TestCase {
 	private Store&MockObject $store;
 	private Settings&MockObject $settings;
 	private GroupService $svc;
+	private bool $groupManaged = false;
 
 	protected function setUp(): void {
 		$this->gm = $this->createMock(IGroupManager::class);
 		$this->um = $this->createMock(IUserManager::class);
 		$this->store = $this->createMock(Store::class);
 		$this->settings = $this->createMock(Settings::class);
-		$this->store->method('groupRow')->willReturn(['scim_id' => 'gsid', 'external_id' => null, 'created_at' => 1]);
-		$this->store->method('userRow')->willReturn(['scim_id' => 'usid', 'external_id' => null, 'created_at' => 1, 'pending_delete_at' => null]);
+		$this->store->method('groupRow')->willReturnCallback(fn () => ['scim_id' => 'gsid', 'external_id' => null, 'created_at' => 1, 'managed' => $this->groupManaged]);
+		$this->store->method('userRow')->willReturn(['scim_id' => 'usid', 'external_id' => null, 'created_at' => 1, 'pending_delete_at' => null, 'managed' => false]);
 		$this->svc = new GroupService($this->gm, $this->um, $this->store, $this->settings, $this->createMock(IURLGenerator::class));
 	}
 
@@ -58,6 +59,22 @@ class GroupServiceTest extends TestCase {
 		} catch (ScimException $e) {
 			$this->assertSame(403, $e->status);
 		}
+	}
+
+	public function testGroupsAndMembersNotCreatedThroughScimAreLeftAlone(): void {
+		$local = $this->member('local');
+		$g = $this->group('staff', [$local]);
+		$this->settings->method('managedOnly')->willReturn(true);
+		try { // the group itself was not created through SCIM
+			$this->svc->delete('gsid');
+			$this->fail('expected 404');
+		} catch (ScimException $e) {
+			$this->assertSame(404, $e->status);
+		}
+		// A SCIM group: a member that SCIM cannot see is neither listed nor removed by a full sync.
+		$this->groupManaged = true;
+		$g->expects($this->never())->method('removeUser');
+		$this->assertSame([], $this->svc->replace('gsid', ['members' => []])['members']);
 	}
 
 	private function member(string $uid): IUser&MockObject {

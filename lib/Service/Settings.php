@@ -48,12 +48,21 @@ class Settings {
 		return $this->config->getValueBool(self::APP, 'allow_http', false);
 	}
 
-	public function save(string $mode, int $days, bool $protect): void {
+	/**
+	 * SCIM only sees and changes the accounts and groups that were created through SCIM. Off: everything
+	 * in Nextcloud is listed and can be taken over ("adopted") by the identity provider.
+	 */
+	public function managedOnly(): bool {
+		return $this->config->getValueBool(self::APP, 'managed_only', true);
+	}
+
+	public function save(string $mode, int $days, bool $protect, bool $managedOnly): void {
 		if (!in_array($mode, self::MODES, true) || $days < 1 || $days > 3650) {
 			throw new \InvalidArgumentException('Invalid settings');
 		}
 		$this->config->setValueString(self::APP, 'delete_mode', $mode);
 		$this->config->setValueInt(self::APP, 'purge_days', $days);
 		$this->config->setValueBool(self::APP, 'protect_admins', $protect);
+		$this->config->setValueBool(self::APP, 'managed_only', $managedOnly);
 	}
 }

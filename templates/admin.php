@@ -50,6 +50,11 @@ declare(strict_types=1);
 		<input type="checkbox" id="scim-protect" class="checkbox" <?php if ($_['protectAdmins']) { p('checked'); } ?>>
 		<label for="scim-protect"><?php p($l->t('Protect administrators and the admin group from SCIM changes')); ?></label>
 	</p>
+	<p>
+		<input type="checkbox" id="scim-managed" class="checkbox" <?php if ($_['managedOnly']) { p('checked'); } ?>>
+		<label for="scim-managed"><?php p($l->t('Only manage accounts and groups that were created through SCIM')); ?></label>
+	</p>
+	<p class="settings-hint"><?php p($l->t('When this is off, the identity provider sees every account and group in Nextcloud and can take over existing ones.')); ?></p>
 	<p class="settings-hint"><?php p($l->t('An account that is marked inactive is always only disabled, and enabled again when it becomes active.')); ?></p>
 	<button type="button" id="scim-save"><?php p($l->t('Save')); ?></button>
 	<span id="scim-status"></span>

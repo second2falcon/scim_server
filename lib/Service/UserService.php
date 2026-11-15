@@ -74,9 +74,13 @@ class UserService {
 				'externalid' => ($uid = $this->store->uidByExternalId($f[1])) !== null ? $this->users->get($uid) : null,
 				default => throw new ScimException(400, "Cannot filter on $f[0]", 'invalidFilter'),
 			};
-			$found = $user === null ? [] : [$user];
+			$found = $user === null || !$this->visible($user->getUID()) ? [] : [$user];
 			$total = count($found);
 			$page = $startIndex === 1 ? $found : [];
+		} elseif ($this->settings->managedOnly()) {
+			$total = $this->store->countManagedUsers();
+			$uids = $count === 0 ? [] : $this->store->managedUsers($count, $startIndex - 1);
+			$page = array_values(array_filter(array_map(fn (string $uid) => $this->users->get($uid), $uids)));
 		} else {
 			$total = array_sum($this->users->countUsers());
 			$page = $count === 0 ? [] : array_values($this->users->search('', $count, $startIndex - 1));
@@ -109,6 +113,7 @@ class UserService {
 		if (!$user instanceof IUser) {
 			throw new ScimException(400, "Cannot create user $uid", 'invalidValue');
 		}
+		$this->store->setUserManaged($user->getUID());
 		$this->apply($user, $body, true);
 		return $this->toScim($user);
 	}
@@ -169,10 +174,15 @@ class UserService {
 	private function find(string $scimId): IUser {
 		$uid = $this->store->uidByScimId($scimId);
 		$user = $uid === null ? null : $this->users->get($uid);
-		if ($user === null) { // rows of accounts removed in Nextcloud are cleaned up by CleanupListener
+		if ($user === null || !$this->visible($user->getUID())) { // rows of accounts removed in Nextcloud are cleaned up by CleanupListener
 			throw new ScimException(404, "User $scimId not found");
 		}
 		return $user;
+	}
+
+	/** With "only SCIM-created" on, other accounts do not exist as far as SCIM is concerned. */
+	private function visible(string $uid): bool {
+		return !$this->settings->managedOnly() || $this->store->userRow($uid)['managed'];
 	}
 
 	private function apply(IUser $user, array $a, bool $creating = false): void {

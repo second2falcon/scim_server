@@ -11,6 +11,7 @@ namespace OCA\ScimServer\Db;
 
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\DB\Exception;
+use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 use OCP\Security\ISecureRandom;
 
@@ -76,7 +77,7 @@ class Store {
 
 	// ---- users ----
 
-	/** @return array{scim_id:string,external_id:?string,created_at:int,pending_delete_at:?int} */
+	/** @return array{scim_id:string,external_id:?string,created_at:int,pending_delete_at:?int,managed:bool} */
 	public function userRow(string $uid): array {
 		return $this->row('scim_users', 'uid', $uid);
 	}
@@ -92,6 +93,23 @@ class Store {
 	public function setUserExternalId(string $uid, ?string $externalId): void {
 		$this->userRow($uid);
 		$this->set('scim_users', 'uid', $uid, 'external_id', $externalId);
+	}
+
+	/** Mark an account as created through SCIM. */
+	public function setUserManaged(string $uid): void {
+		$this->userRow($uid);
+		$this->set('scim_users', 'uid', $uid, 'managed', 1);
+	}
+
+	/** @return list<string> uids of accounts created through SCIM, ordered */
+	public function managedUsers(?int $limit = null, int $offset = 0): array {
+		return $this->managed('scim_users', 'uid', $limit, $offset);
+	}
+
+	public function countManagedUsers(): int {
+		$q = $this->db->getQueryBuilder();
+		$q->select($q->func()->count('*'))->from('scim_users')->where($q->expr()->eq('managed', $q->createNamedParameter(1, IQueryBuilder::PARAM_INT)));
+		return (int)$q->executeQuery()->fetchOne();
 	}
 
 	public function setPendingDelete(string $uid, ?int $at): void {
@@ -124,7 +142,7 @@ class Store {
 
 	// ---- groups ----
 
-	/** @return array{scim_id:string,external_id:?string,created_at:int} */
+	/** @return array{scim_id:string,external_id:?string,created_at:int,managed:bool} */
 	public function groupRow(string $gid): array {
 		return $this->row('scim_groups', 'gid', $gid);
 	}
@@ -140,6 +158,17 @@ class Store {
 	public function setGroupExternalId(string $gid, ?string $externalId): void {
 		$this->groupRow($gid);
 		$this->set('scim_groups', 'gid', $gid, 'external_id', $externalId);
+	}
+
+	/** Mark a group as created through SCIM. */
+	public function setGroupManaged(string $gid): void {
+		$this->groupRow($gid);
+		$this->set('scim_groups', 'gid', $gid, 'managed', 1);
+	}
+
+	/** @return list<string> gids of groups created through SCIM, ordered */
+	public function managedGroups(): array {
+		return $this->managed('scim_groups', 'gid', null, 0);
 	}
 
 	public function deleteGroupRow(string $gid): void {
@@ -170,8 +199,17 @@ class Store {
 			}
 		}
 		$row['created_at'] = (int)$row['created_at'];
+		$row['managed'] = !empty($row['managed']);
 		$row['pending_delete_at'] = isset($row['pending_delete_at']) ? (int)$row['pending_delete_at'] : null;
 		return $row;
+	}
+
+	/** @return list<string> */
+	private function managed(string $table, string $key, ?int $limit, int $offset): array {
+		$q = $this->db->getQueryBuilder();
+		$q->select($key)->from($table)->where($q->expr()->eq('managed', $q->createNamedParameter(1, IQueryBuilder::PARAM_INT)))
+			->orderBy($key)->setMaxResults($limit)->setFirstResult($offset);
+		return array_map('strval', $q->executeQuery()->fetchAll(\PDO::FETCH_COLUMN));
 	}
 
 	private function find(string $table, string $key, string $column, string $value): ?string {
