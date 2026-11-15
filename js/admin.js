@@ -15,17 +15,20 @@
 		body: body ? JSON.stringify(body) : undefined,
 	}).then((r) => r.json().then((j) => ({ ok: r.ok, json: j })))
 	const $ = (id) => document.getElementById(id)
+	// The endpoints need a recent password confirmation; this shows Nextcloud's dialog when it is due.
+	const confirmed = (fn) => () => (window.OC && OC.PasswordConfirmation ? OC.PasswordConfirmation.requirePasswordConfirmation(fn) : fn())
 
-	$('scim-save').addEventListener('click', async () => {
+	$('scim-save').addEventListener('click', confirmed(async () => {
 		const r = await call(root.dataset.settingsUrl, 'PUT', {
 			deleteMode: $('scim-mode').value,
 			purgeDays: parseInt($('scim-days').value, 10) || 0,
 			protectAdmins: $('scim-protect').checked,
+			managedOnly: $('scim-managed').checked,
 		})
 		$('scim-status').textContent = r.ok ? '✓' : (r.json.error || '✗')
-	})
+	}))
 
-	$('scim-create').addEventListener('click', async () => {
+	$('scim-create').addEventListener('click', confirmed(async () => {
 		const r = await call(root.dataset.tokensUrl, 'POST', { label: $('scim-label').value })
 		if (!r.ok) {
 			return
@@ -36,11 +39,11 @@
 		const li = document.createElement('li')
 		li.textContent = $('scim-label').value || 'token'
 		$('scim-tokens').appendChild(li)
-	})
+	}))
 
-	document.querySelectorAll('.scim-revoke').forEach((btn) => btn.addEventListener('click', async () => {
+	document.querySelectorAll('.scim-revoke').forEach((btn) => btn.addEventListener('click', confirmed(async () => {
 		if ((await call(root.dataset.tokensUrl + '/' + btn.dataset.id, 'DELETE')).ok) {
 			btn.closest('li').remove()
 		}
-	}))
+	})))
 })()

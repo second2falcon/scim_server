@@ -34,12 +34,35 @@ class Settings {
 		return $this->config->getValueBool(self::APP, 'protect_admins', true);
 	}
 
-	public function save(string $mode, int $days, bool $protect): void {
+	/**
+	 * Group ids that SCIM may not change or delete, besides `admin`.
+	 * ponytail: no UI, set with `occ config:app:set scim_server protected_groups --value="gid1,gid2"`.
+	 * @return list<string>
+	 */
+	public function protectedGroups(): array {
+		return array_values(array_filter(array_map('trim', explode(',', $this->config->getValueString(self::APP, 'protected_groups', '')))));
+	}
+
+	/** Accept SCIM requests over plain HTTP (test setups only): `occ config:app:set scim_server allow_http --value=true --type=boolean`. */
+	public function allowHttp(): bool {
+		return $this->config->getValueBool(self::APP, 'allow_http', false);
+	}
+
+	/**
+	 * SCIM only sees and changes the accounts and groups that were created through SCIM. Off: everything
+	 * in Nextcloud is listed and can be taken over ("adopted") by the identity provider.
+	 */
+	public function managedOnly(): bool {
+		return $this->config->getValueBool(self::APP, 'managed_only', true);
+	}
+
+	public function save(string $mode, int $days, bool $protect, bool $managedOnly): void {
 		if (!in_array($mode, self::MODES, true) || $days < 1 || $days > 3650) {
 			throw new \InvalidArgumentException('Invalid settings');
 		}
 		$this->config->setValueString(self::APP, 'delete_mode', $mode);
 		$this->config->setValueInt(self::APP, 'purge_days', $days);
 		$this->config->setValueBool(self::APP, 'protect_admins', $protect);
+		$this->config->setValueBool(self::APP, 'managed_only', $managedOnly);
 	}
 }

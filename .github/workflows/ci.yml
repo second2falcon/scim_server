@@ -113,7 +113,7 @@ jobs:
           php occ app:enable scim_server
           php occ app:list --enabled | grep scim_server
       - name: End-to-end tests (SCIM requests against the running server)
-        run: NC_DIR=$PWD/server server/apps/scim_server/tests/integration/run.sh
+        run: NC_DIR=$PWD/server SCIM_TEST_DISPOSABLE_INSTANCE=1 server/apps/scim_server/tests/integration/run.sh
       - name: Logs on failure
         if: failure()
         run: |

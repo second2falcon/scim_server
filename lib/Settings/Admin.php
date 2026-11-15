@@ -28,6 +28,7 @@ class Admin implements ISettings {
 			'deleteMode' => $this->settings->deleteMode(),
 			'purgeDays' => $this->settings->purgeDays(),
 			'protectAdmins' => $this->settings->protectAdmins(),
+			'managedOnly' => $this->settings->managedOnly(),
 			'baseUrl' => preg_replace('#/ServiceProviderConfig$#', '', $this->urls->linkToRouteAbsolute('scim_server.scim.serviceProviderConfig')),
 			'settingsUrl' => $this->urls->linkToRoute('scim_server.admin.save'),
 			'tokensUrl' => $this->urls->linkToRoute('scim_server.admin.createToken'),

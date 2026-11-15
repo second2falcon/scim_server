@@ -20,6 +20,10 @@ class Filter {
 		if (!preg_match('/^\s*([A-Za-z][A-Za-z0-9.:_-]*)\s+eq\s+"((?:[^"\\\\]|\\\\.)*)"\s*$/i', $filter, $m)) {
 			throw new ScimException(400, 'Unsupported filter, only: attribute eq "value"', 'invalidFilter');
 		}
-		return [strtolower($m[1]), stripcslashes($m[2])];
+		$value = json_decode('"' . $m[2] . '"'); // SCIM filter values are JSON strings
+		if (!is_string($value)) {
+			throw new ScimException(400, 'Invalid string in filter', 'invalidFilter');
+		}
+		return [strtolower($m[1]), $value];
 	}
 }
