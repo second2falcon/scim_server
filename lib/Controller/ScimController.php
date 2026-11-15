@@ -22,15 +22,42 @@ use OCP\IRequest;
 /**
  * SCIM 2.0 (RFC 7643/7644) endpoints. Every action is #[PublicPage] #[NoCSRFRequired] (class-level attributes are not honoured by Nextcloud): ScimMiddleware requires a
  * bearer token instead, and turns ScimExceptions into SCIM errors.
+ *
+ * Fail closed: nothing here runs unless the middleware has called markAuthenticated() for this request. The
+ * services are only reachable through users()/groups(), which check that, so an action cannot forget it.
  */
 class ScimController extends Controller {
-	public function __construct(string $appName, IRequest $request, private UserService $users, private GroupService $groups) {
+	private bool $authenticated = false;
+
+	public function __construct(string $appName, IRequest $request, private UserService $userService, private GroupService $groupService) {
 		parent::__construct($appName, $request);
+	}
+
+	/** Only for ScimMiddleware, after it accepted the bearer token. */
+	public function markAuthenticated(): void {
+		$this->authenticated = true;
+	}
+
+	private function guard(): void {
+		if (!$this->authenticated) {
+			throw new ScimException(401, 'Missing or invalid bearer token');
+		}
+	}
+
+	private function users(): UserService {
+		$this->guard();
+		return $this->userService;
+	}
+
+	private function groups(): GroupService {
+		$this->guard();
+		return $this->groupService;
 	}
 
 	#[PublicPage]
 	#[NoCSRFRequired]
 	public function serviceProviderConfig(): JSONResponse {
+		$this->guard();
 		return $this->json([
 			'schemas' => ['urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig'],
 			'patch' => ['supported' => true],
@@ -50,74 +77,74 @@ class ScimController extends Controller {
 	#[PublicPage]
 	#[NoCSRFRequired]
 	public function listUsers(?string $filter = null, int $startIndex = 1, int $count = 100): JSONResponse {
-		return $this->json($this->users->list($filter, $startIndex, $count));
+		return $this->json($this->users()->list($filter, $startIndex, $count));
 	}
 
 	#[PublicPage]
 	#[NoCSRFRequired]
 	public function getUser(string $id): JSONResponse {
-		return $this->json($this->users->get($id));
+		return $this->json($this->users()->get($id));
 	}
 
 	#[PublicPage]
 	#[NoCSRFRequired]
 	public function createUser(): JSONResponse {
-		return $this->created($this->users->create($this->body()));
+		return $this->created($this->users()->create($this->body()));
 	}
 
 	#[PublicPage]
 	#[NoCSRFRequired]
 	public function replaceUser(string $id): JSONResponse {
-		return $this->json($this->users->replace($id, $this->body()));
+		return $this->json($this->users()->replace($id, $this->body()));
 	}
 
 	#[PublicPage]
 	#[NoCSRFRequired]
 	public function patchUser(string $id): JSONResponse {
-		return $this->json($this->users->patch($id, $this->body()));
+		return $this->json($this->users()->patch($id, $this->body()));
 	}
 
 	#[PublicPage]
 	#[NoCSRFRequired]
 	public function deleteUser(string $id): Response {
-		$this->users->delete($id);
+		$this->users()->delete($id);
 		return $this->noContent();
 	}
 
 	#[PublicPage]
 	#[NoCSRFRequired]
 	public function listGroups(?string $filter = null, int $startIndex = 1, int $count = 100): JSONResponse {
-		return $this->json($this->groups->list($filter, $startIndex, $count));
+		return $this->json($this->groups()->list($filter, $startIndex, $count));
 	}
 
 	#[PublicPage]
 	#[NoCSRFRequired]
 	public function getGroup(string $id): JSONResponse {
-		return $this->json($this->groups->get($id));
+		return $this->json($this->groups()->get($id));
 	}
 
 	#[PublicPage]
 	#[NoCSRFRequired]
 	public function createGroup(): JSONResponse {
-		return $this->created($this->groups->create($this->body()));
+		return $this->created($this->groups()->create($this->body()));
 	}
 
 	#[PublicPage]
 	#[NoCSRFRequired]
 	public function replaceGroup(string $id): JSONResponse {
-		return $this->json($this->groups->replace($id, $this->body()));
+		return $this->json($this->groups()->replace($id, $this->body()));
 	}
 
 	#[PublicPage]
 	#[NoCSRFRequired]
 	public function patchGroup(string $id): JSONResponse {
-		return $this->json($this->groups->patch($id, $this->body()));
+		return $this->json($this->groups()->patch($id, $this->body()));
 	}
 
 	#[PublicPage]
 	#[NoCSRFRequired]
 	public function deleteGroup(string $id): Response {
-		$this->groups->delete($id);
+		$this->groups()->delete($id);
 		return $this->noContent();
 	}
 

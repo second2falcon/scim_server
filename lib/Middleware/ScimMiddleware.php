@@ -55,6 +55,7 @@ class ScimMiddleware extends Middleware {
 			$this->logger->warning('SCIM: missing or invalid bearer token from {ip}', ['app' => 'scim_server', 'ip' => $ip]);
 			throw new ScimException(401, 'Missing or invalid bearer token');
 		}
+		$controller->markAuthenticated(); // the controller refuses to do anything without this
 		if ($this->request->getMethod() !== 'GET') {
 			$this->logger->info('SCIM: {method} {path} with token #{id} ({label})', [
 				'app' => 'scim_server', 'method' => $this->request->getMethod(), 'path' => (string)$this->request->getPathInfo(),
