@@ -9,7 +9,8 @@
 
 > **Follow-up, same day:** fixes for these findings were implemented after this review; see `CHANGELOG.md` (Unreleased).
 > SCIM is now limited to the resources it created (M-1, setting on by default). Not changed: token expiry and scopes
-> (L-3), batching of group member lookups (L-6), pinning of the App Store XSD (L-9), and I-1. `docs/HANDOVER.md` (L-8)
+> (L-3), batching of group member lookups (L-6) and pinning of the App Store XSD (L-9). I-1 is fixed: the controller
+> fails closed without the middleware. `docs/HANDOVER.md` (L-8)
 > was removed, also from the git history.
 
 ## Summary
