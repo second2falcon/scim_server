@@ -10,6 +10,8 @@ Development build: bump the `-dev.N` number for every build you want Nextcloud t
 - Clearer error when an IdP sends a different `userName` for an existing account.
 - Database migration (adds a column to `scim_groups`).
 
+### Security fixes
+
 Security fixes from the review in `docs/SecurityReview-261114-ClaudeCode-claude-fable-5-2.md`.
 
 - **Administrator protection now covers every change**, not only disabling and deleting. Before, a SCIM token could change an administrator's email address, which together with Nextcloud's password reset allowed taking over the account.

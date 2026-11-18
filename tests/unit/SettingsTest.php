@@ -36,6 +36,6 @@ class SettingsTest extends TestCase {
 		$config = $this->createMock(IAppConfig::class);
 		$config->expects($this->never())->method('setValueString');
 		$this->expectException(\InvalidArgumentException::class);
-		(new Settings($config))->save('disable', 30, true, '(unclosed');
+		(new Settings($config))->save('disable', 30, true, true, '(unclosed');
 	}
 }
