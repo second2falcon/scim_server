@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## 0.1.1-dev.1
+
+Development build: bump the `-dev.N` number for every build you want Nextcloud to upgrade to.
+
+- **Group filter**: a regular expression in the admin settings decides which groups are created in Nextcloud. Other groups are acknowledged to the IdP (so syncs do not fail) but never created, and their members are ignored. The filter applies when a group is created, or when it is renamed to a name that matches.
+- Clearer error when an IdP sends a different `userName` for an existing account.
+- Database migration (adds a column to `scim_groups`).
+
 Security fixes from the review in `docs/SecurityReview-261114-ClaudeCode-claude-fable-5-2.md`.
 
 - **Administrator protection now covers every change**, not only disabling and deleting. Before, a SCIM token could change an administrator's email address, which together with Nextcloud's password reset allowed taking over the account.

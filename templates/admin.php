@@ -55,6 +55,13 @@ declare(strict_types=1);
 		<label for="scim-managed"><?php p($l->t('Only manage accounts and groups that were created through SCIM')); ?></label>
 	</p>
 	<p class="settings-hint"><?php p($l->t('When this is off, the identity provider sees every account and group in Nextcloud and can take over existing ones.')); ?></p>
+	<h3><?php p($l->t('Group filter')); ?></h3>
+	<p>
+		<label><?php p($l->t('Only create groups whose name matches this regular expression (empty: all groups)')); ?>
+			<input type="text" id="scim-group-regex" value="<?php p($_['groupRegex']); ?>" placeholder="^nextcloud-">
+		</label>
+	</p>
+	<p class="settings-hint"><?php p($l->t('Groups that do not match are acknowledged to the identity provider but never created in Nextcloud, and their members are ignored. The filter applies when a group is created, or when it is renamed to a name that matches. Groups that already exist are left alone.')); ?></p>
 	<p class="settings-hint"><?php p($l->t('An account that is marked inactive is always only disabled, and enabled again when it becomes active.')); ?></p>
 	<button type="button" id="scim-save"><?php p($l->t('Save')); ?></button>
 	<span id="scim-status"></span>

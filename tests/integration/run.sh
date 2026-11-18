@@ -68,6 +68,22 @@ req GET '/Groups?filter=displayName%20eq%20%22staff%22'; field "filter group" .t
 req DELETE "/Groups/$GID"; expect "delete group" 204
 [[ $(occ user:list --output=json | jq 'has("ann")') == true ]] && ok "deleting a group keeps its users" || bad "deleting a group keeps its users" ""
 
+# --- group filter
+occ config:app:set scim_server group_regex --value='^nc-' >/dev/null
+req POST /Groups "{\"displayName\":\"everyone\",\"externalId\":\"ak-g1\",\"members\":[{\"value\":\"$UID_ANN\"}]}"
+expect "excluded group is acknowledged" 201; XG=$(jq -r .id <<<"$BODY")
+[[ $(occ group:list --output=json | jq 'has("everyone")') == false ]] && ok "excluded group is not created in Nextcloud" || bad "excluded group is not created" ""
+req GET "/Groups/$XG"; expect "excluded group can be read" 200
+req PATCH "/Groups/$XG" "{\"Operations\":[{\"op\":\"add\",\"path\":\"members\",\"value\":[{\"value\":\"$UID_ANN\"}]}]}"; expect "excluded group accepts patches" 200
+req POST /Groups '{"displayName":"everyone"}'; expect "excluded group name is a conflict" 409
+req GET '/Groups?filter=displayName%20eq%20%22everyone%22'; field "excluded group is found by filter" '.Resources[0].id' "$XG"
+req POST /Groups '{"displayName":"nc-staff"}'; expect "matching group is created" 201
+[[ $(occ group:list --output=json | jq 'has("nc-staff")') == true ]] && ok "matching group exists in Nextcloud" || bad "matching group exists" ""
+req PUT "/Groups/$XG" "{\"displayName\":\"nc-everyone\",\"members\":[{\"value\":\"$UID_ANN\"}]}"; field "renaming to a matching name creates it, same id" .id "$XG"
+[[ "$(occ group:list --output=json | jq -r '.["nc-everyone"] | join(",")')" == "ann" ]] && ok "promoted group has its members" || bad "promoted group has its members" ""
+req DELETE "/Groups/$XG"; expect "delete promoted group" 204
+occ config:app:set scim_server group_regex --value='' >/dev/null
+
 # --- deprovisioning modes
 occ config:app:set scim_server delete_mode --value=disable >/dev/null
 req DELETE "/Users/$UID_ANN"; expect "delete (mode: disable)" 204; [[ $(enabled ann) == false ]] && ok "only disabled" || bad "only disabled" ""

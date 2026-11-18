@@ -171,6 +171,25 @@ class Store {
 		return $this->managed('scim_groups', 'gid', null, 0);
 	}
 
+	/** The row of a group excluded by the group filter, if there is one. @return array{scim_id:string,external_id:?string,created_at:int,managed:bool}|null */
+	public function ignoredGroupRow(string $gid): ?array {
+		$q = $this->db->getQueryBuilder();
+		$q->select('ignored')->from('scim_groups')->where($q->expr()->eq('gid', $q->createNamedParameter($gid)));
+		return (int)$q->executeQuery()->fetchOne() === 1 ? $this->groupRow($gid) : null;
+	}
+
+	public function setGroupIgnored(string $gid, bool $ignored): void {
+		$this->groupRow($gid);
+		$this->set('scim_groups', 'gid', $gid, 'managed', 1);
+		$this->set('scim_groups', 'gid', $gid, 'ignored', $ignored ? 1 : 0);
+	}
+
+	/** Re-key the row of an excluded group to the group that now exists for it, keeping the SCIM id the IdP knows. */
+	public function moveGroupRow(string $fromGid, string $toGid): void {
+		$this->set('scim_groups', 'gid', $fromGid, 'ignored', 0);
+		$this->set('scim_groups', 'gid', $fromGid, 'gid', $toGid);
+	}
+
 	public function deleteGroupRow(string $gid): void {
 		$this->remove('scim_groups', 'gid', $gid);
 	}

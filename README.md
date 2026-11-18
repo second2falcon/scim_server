@@ -14,6 +14,7 @@ and Nextcloud follows it. It runs entirely inside Nextcloud, no extra service ne
   - disable now and **delete the account and its data after N days** (default 30, you set N),
   - delete immediately.
   Becoming active again re-enables the account and cancels a scheduled deletion.
+- Group filter: a regular expression in the settings decides which groups land in Nextcloud (like the group filter of `user_oidc`); excluded groups never appear and their members are ignored, but the IdP still gets a normal answer, so syncs stay green.
 - Groups: create, rename, delete (deleting a group never deletes accounts), membership via PUT or PATCH.
 - SCIM only sees and changes the accounts and groups **it created**. Everything else in Nextcloud (local accounts,
   administrators, groups made by hand) is invisible to the identity provider. To let it take over accounts that already

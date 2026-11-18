@@ -158,4 +158,42 @@ class GroupServiceTest extends TestCase {
 		$this->store->expects($this->once())->method('deleteGroupRow')->with('staff');
 		$this->svc->delete('gsid');
 	}
+
+	public function testExcludedGroupIsAcknowledgedButNotCreated(): void {
+		$this->gm->method('get')->willReturn(null);
+		$this->gm->method('search')->willReturn([]);
+		$this->settings->method('groupAllowed')->with('Everyone')->willReturn(false);
+		$this->store->method('ignoredGroupRow')->willReturn(null);
+		$this->gm->expects($this->never())->method('createGroup');
+		$this->store->expects($this->once())->method('setGroupIgnored')->with('Everyone', true);
+		$res = $this->svc->create(['displayName' => 'Everyone', 'members' => [['value' => 'usid']]]);
+		$this->assertSame('gsid', $res['id']);
+		$this->assertSame([], $res['members']);
+	}
+
+	public function testExcludedGroupAcceptsLaterRequests(): void {
+		$this->store->method('gidByScimId')->with('gsid')->willReturn('Everyone');
+		$this->store->method('ignoredGroupRow')->willReturn(['scim_id' => 'gsid', 'external_id' => null, 'created_at' => 1]);
+		$this->settings->method('groupAllowed')->willReturn(false);
+		$this->gm->expects($this->never())->method('createGroup');
+		$this->assertSame([], $this->svc->get('gsid')['members']);
+		$this->assertSame([], $this->svc->patch('gsid', ['Operations' => [['op' => 'add', 'path' => 'members', 'value' => [['value' => 'usid']]]]])['members']);
+		$this->assertSame([], $this->svc->replace('gsid', ['displayName' => 'Everyone'])['members']);
+		$this->store->expects($this->once())->method('deleteGroupRow')->with('Everyone');
+		$this->svc->delete('gsid');
+	}
+
+	public function testRenamedToAllowedNameCreatesGroupKeepingScimId(): void {
+		$this->store->method('gidByScimId')->with('gsid')->willReturn('Everyone');
+		$this->store->method('ignoredGroupRow')->willReturn(['scim_id' => 'gsid', 'external_id' => null, 'created_at' => 1]);
+		$this->settings->method('groupAllowed')->with('nextcloud-staff')->willReturn(true);
+		$g = $this->createMock(IGroup::class);
+		$g->method('getGID')->willReturn('nextcloud-staff');
+		$g->method('getDisplayName')->willReturn('nextcloud-staff');
+		$g->method('getUsers')->willReturn([]);
+		$this->gm->expects($this->once())->method('createGroup')->with('nextcloud-staff')->willReturn($g);
+		$this->store->expects($this->once())->method('moveGroupRow')->with('Everyone', 'nextcloud-staff');
+		$res = $this->svc->replace('gsid', ['displayName' => 'nextcloud-staff']);
+		$this->assertSame('gsid', $res['id']);
+	}
 }

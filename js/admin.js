@@ -24,6 +24,7 @@
 			purgeDays: parseInt($('scim-days').value, 10) || 0,
 			protectAdmins: $('scim-protect').checked,
 			managedOnly: $('scim-managed').checked,
+			groupRegex: $('scim-group-regex').value,
 		})
 		$('scim-status').textContent = r.ok ? '✓' : (r.json.error || '✗')
 	}))

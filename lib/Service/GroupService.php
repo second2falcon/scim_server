@@ -56,7 +56,52 @@ class GroupService {
 	}
 
 	public function get(string $scimId): array {
+		if (($gid = $this->stubGid($scimId)) !== null) {
+			return $this->stub($gid);
+		}
 		return $this->toScim($this->find($scimId));
+	}
+
+	/**
+	 * A group that the group filter keeps out of Nextcloud: the IdP still gets a stable id for it and
+	 * every later request succeeds, but nothing is created or changed in Nextcloud.
+	 */
+	private function stub(string $gid): array {
+		$row = $this->store->groupRow($gid);
+		$res = [
+			'schemas' => [self::SCHEMA],
+			'id' => $row['scim_id'],
+			'displayName' => $gid,
+			'members' => [],
+			'meta' => [
+				'resourceType' => 'Group',
+				'created' => gmdate('c', $row['created_at']),
+				'location' => $this->urls->linkToRouteAbsolute('scim_server.scim.getGroup', ['id' => $row['scim_id']]),
+			],
+		];
+		if ($row['external_id'] !== null) {
+			$res['externalId'] = $row['external_id'];
+		}
+		return $res;
+	}
+
+	private function stubGid(string $scimId): ?string {
+		$gid = $this->store->gidByScimId($scimId);
+		return $gid !== null && $this->store->ignoredGroupRow($gid) !== null ? $gid : null;
+	}
+
+	/** A previously excluded group got a name that passes the filter: create it for real, keeping its SCIM id. */
+	private function promote(string $gid, string $name, array $body): IGroup {
+		$group = $this->groups->createGroup($name);
+		if (!$group instanceof IGroup) {
+			throw new ScimException(400, "Cannot create group $name", 'invalidValue');
+		}
+		$this->store->deleteGroupRow($group->getGID()); // a stale row of the same name must not clash
+		$this->store->moveGroupRow($gid, $group->getGID());
+		$this->store->setGroupManaged($group->getGID());
+		$this->setExternalId($group, $body);
+		$this->syncMembers($group, Patch::memberIds($body['members'] ?? []));
+		return $group;
 	}
 
 	public function list(?string $filter, int $startIndex, int $count): array {
@@ -69,7 +114,9 @@ class GroupService {
 				'externalid' => ($gid = $this->store->gidByExternalId($f[1])) !== null ? $this->groups->get($gid) : null,
 				default => throw new ScimException(400, "Cannot filter on $f[0]", 'invalidFilter'),
 			};
-			$all = $group === null || !$this->groupVisible($group->getGID()) ? [] : [$group];
+			$stubGid = $f[0] === 'displayname' ? mb_substr($f[1], 0, 64) : $this->store->gidByExternalId($f[1]);
+			$all = $group !== null ? ($this->groupVisible($group->getGID()) ? [$group] : [])
+				: ($stubGid !== null && $this->store->ignoredGroupRow($stubGid) !== null ? [$stubGid] : []);
 		} elseif ($this->settings->managedOnly()) {
 			$all = array_values(array_filter(array_map(fn (string $gid) => $this->groups->get($gid), $this->store->managedGroups())));
 		} else {
@@ -81,7 +128,7 @@ class GroupService {
 			'totalResults' => count($all),
 			'startIndex' => $startIndex,
 			'itemsPerPage' => count($page),
-			'Resources' => array_map(fn (IGroup $g) => $this->toScim($g), $page),
+			'Resources' => array_map(fn (IGroup|string $g) => is_string($g) ? $this->stub($g) : $this->toScim($g), $page),
 		];
 	}
 
@@ -93,7 +140,16 @@ class GroupService {
 		if ($this->byName($name) !== null) {
 			throw new ScimException(409, "Group $name already exists", 'uniqueness');
 		}
+		if ($this->store->ignoredGroupRow(mb_substr($name, 0, 64)) !== null) {
+			throw new ScimException(409, "Group $name already exists", 'uniqueness');
+		}
 		$this->assertExternalIdFree($body['externalId'] ?? null, null);
+		if (!$this->settings->groupAllowed($name)) {
+			$gid = mb_substr($name, 0, 64);
+			$this->store->setGroupIgnored($gid, true);
+			$this->setExternalId(null, $body, $gid);
+			return $this->stub($gid);
+		}
 		$group = $this->groups->createGroup($name);
 		if (!$group instanceof IGroup) {
 			throw new ScimException(400, "Cannot create group $name", 'invalidValue');
@@ -105,6 +161,14 @@ class GroupService {
 	}
 
 	public function replace(string $scimId, array $body): array {
+		if (($gid = $this->stubGid($scimId)) !== null) {
+			$name = is_string($body['displayName'] ?? null) ? $body['displayName'] : $gid;
+			if ($this->settings->groupAllowed($name)) {
+				return $this->toScim($this->promote($gid, $name, $body));
+			}
+			$this->setExternalId(null, $body, $gid);
+			return $this->stub($gid);
+		}
 		$group = $this->find($scimId);
 		$this->guardAdmin($group);
 		if (is_string($body['displayName'] ?? null) && $body['displayName'] !== '') {
@@ -118,6 +182,13 @@ class GroupService {
 	}
 
 	public function patch(string $scimId, array $body): array {
+		if (($gid = $this->stubGid($scimId)) !== null) {
+			$name = Patch::groupChanges($body)['displayName'];
+			if ($name !== null && $this->settings->groupAllowed($name)) {
+				return $this->toScim($this->promote($gid, $name, []));
+			}
+			return $this->stub($gid);
+		}
 		$group = $this->find($scimId);
 		$this->guardAdmin($group);
 		$changes = Patch::groupChanges($body);
@@ -135,6 +206,10 @@ class GroupService {
 	}
 
 	public function delete(string $scimId): void {
+		if (($gid = $this->stubGid($scimId)) !== null) {
+			$this->store->deleteGroupRow($gid);
+			return;
+		}
 		$group = $this->find($scimId);
 		$this->guardAdmin($group);
 		$gid = $group->getGID();
@@ -171,11 +246,12 @@ class GroupService {
 		}
 	}
 
-	private function setExternalId(IGroup $group, array $body): void {
-		if (array_key_exists('externalId', $body)) {
+	private function setExternalId(?IGroup $group, array $body, ?string $gid = null): void {
+		$gid ??= $group?->getGID();
+		if ($gid !== null && array_key_exists('externalId', $body)) {
 			$ext = is_string($body['externalId']) && $body['externalId'] !== '' ? $body['externalId'] : null;
-			$this->assertExternalIdFree($ext, $group->getGID());
-			$this->store->setGroupExternalId($group->getGID(), $ext);
+			$this->assertExternalIdFree($ext, $gid);
+			$this->store->setGroupExternalId($gid, $ext);
 		}
 	}
 
