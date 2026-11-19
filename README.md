@@ -116,13 +116,17 @@ Use the immutable object id: **`oid`**.
    *Test Connection*. Change the user attribute mappings **before the first cycle** (a later `userName` change gets
    `400 mutability`):
 
-   | SCIM attribute | Entra source attribute | |
-   |---|---|---|
-   | `userName` | `objectId` | default is `userPrincipalName`: change it, and give this mapping matching precedence 1 |
-   | `externalId` | `objectId` | default is `mailNickname` |
-   | `emails[type eq "work"].value` | `mail` | |
-   | `displayName` | `displayName` | |
-   | `active` | `Switch([IsSoftDeleted], …)` | keep the default |
+   | SCIM attribute | Entra source attribute | Matching precedence | |
+   |---|---|---|---|
+   | `userName` | `objectId` | **1** | default is `userPrincipalName`: change it |
+   | `externalId` | `objectId` | | default is `mailNickname` |
+   | `emails[type eq "work"].value` | `mail` | | |
+   | `emails[type eq "home"].value` | `userPrincipalName` | **none** | default mapping and default matching attribute: switch its matching off (or delete the mapping) |
+   | `displayName` | `displayName` | | |
+   | `active` | `Switch([IsSoftDeleted], …)` | | keep the default |
+
+   In *Test Connection* the same value must work as the lookup key: the test searches for an account with the
+   matching attribute (`userName eq "<objectId>"` with the table above).
 
    **Matching precedence:** Entra looks accounts up with the mapping that has *Matching precedence* 1 (open *Edit attribute
    mapping*, "Use this attribute to match objects"). By default that is `userPrincipalName` -> `emails[type eq "home"].value`.
