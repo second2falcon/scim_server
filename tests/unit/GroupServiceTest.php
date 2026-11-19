@@ -196,4 +196,49 @@ class GroupServiceTest extends TestCase {
 		$res = $this->svc->replace('gsid', ['displayName' => 'nextcloud-staff']);
 		$this->assertSame('gsid', $res['id']);
 	}
+
+	public function testUnknownMemberFailsBeforeAnythingIsCreated(): void {
+		$this->gm->method('get')->willReturn(null);
+		$this->gm->method('search')->willReturn([]);
+		$this->store->method('ignoredGroupRow')->willReturn(null);
+		$this->store->method('uidByScimId')->willReturn(null);
+		$this->settings->method('groupAllowed')->willReturn(true);
+		$this->gm->expects($this->never())->method('createGroup');
+		try {
+			$this->svc->create(['displayName' => 'staff', 'members' => [['value' => 'ghost']]]);
+			$this->fail('expected 400');
+		} catch (ScimException $e) {
+			$this->assertSame(400, $e->status);
+			$this->assertStringContainsString('created through SCIM', $e->getMessage());
+		}
+	}
+
+	public function testPrefixIsAddedForNextcloudAndHiddenFromTheIdp(): void {
+		$settings = $this->createMock(Settings::class);
+		$settings->method('groupPrefix')->willReturn('SAML_');
+		$settings->method('groupAllowed')->with('DATA-MGMT')->willReturn(true); // the filter sees the plain name
+		$svc = new GroupService($this->gm, $this->um, $this->store, $settings, $this->createMock(IURLGenerator::class));
+		$this->gm->method('get')->willReturn(null);
+		$this->gm->method('search')->willReturn([]);
+		$this->store->method('ignoredGroupRow')->willReturn(null);
+		$g = $this->createMock(IGroup::class);
+		$g->method('getGID')->willReturn('SAML_DATA-MGMT');
+		$g->method('getDisplayName')->willReturn('SAML_DATA-MGMT');
+		$g->method('getUsers')->willReturn([]);
+		$this->gm->expects($this->once())->method('createGroup')->with('SAML_DATA-MGMT')->willReturn($g);
+		$this->assertSame('DATA-MGMT', $svc->create(['displayName' => 'DATA-MGMT'])['displayName']);
+	}
+
+	public function testPrefixedGroupIsFoundByItsPlainName(): void {
+		$settings = $this->createMock(Settings::class);
+		$settings->method('groupPrefix')->willReturn('SAML_');
+		$svc = new GroupService($this->gm, $this->um, $this->store, $settings, $this->createMock(IURLGenerator::class));
+		$g = $this->createMock(IGroup::class);
+		$g->method('getGID')->willReturn('SAML_DATA-MGMT');
+		$g->method('getDisplayName')->willReturn('SAML_DATA-MGMT');
+		$g->method('getUsers')->willReturn([]);
+		$this->gm->expects($this->once())->method('get')->with('SAML_DATA-MGMT')->willReturn($g);
+		$res = $svc->list('displayName eq "DATA-MGMT"', 1, 100);
+		$this->assertSame('DATA-MGMT', $res['Resources'][0]['displayName']);
+	}
 }

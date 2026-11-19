@@ -61,6 +61,12 @@ declare(strict_types=1);
 			<input type="text" id="scim-group-regex" value="<?php p($_['groupRegex']); ?>" placeholder="^nextcloud-">
 		</label>
 	</p>
+	<p>
+		<label><?php p($l->t('Group name prefix (empty: none)')); ?>
+			<input type="text" id="scim-group-prefix" value="<?php p($_['groupPrefix']); ?>" placeholder="SAML_">
+		</label>
+	</p>
+	<p class="settings-hint"><?php p($l->t('Prepended to the group names of the identity provider, so SCIM writes to the groups your login app already uses (user_saml names its groups SAML_<name> by default; user_oidc uses the plain name). The filter above is checked against the name without the prefix. Changing it later does not rename existing groups.')); ?></p>
 	<p class="settings-hint"><?php p($l->t('Groups that do not match are acknowledged to the identity provider but never created in Nextcloud, and their members are ignored. The filter applies when a group is created, or when it is renamed to a name that matches. Groups that already exist are left alone.')); ?></p>
 	<p class="settings-hint"><?php p($l->t('An account that is marked inactive is always only disabled, and enabled again when it becomes active.')); ?></p>
 	<button type="button" id="scim-save"><?php p($l->t('Save')); ?></button>

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## 0.1.1-dev.2
+
+- **Group name prefix** (admin setting): prepended to the group names from the IdP, so SCIM writes to the group `user_saml` created (`SAML_DATA-MGMT` for authentik's `DATA-MGMT`). The IdP keeps seeing the plain name; the group filter is checked against it too.
+- A group request with a member SCIM does not know now fails *before* the group is created. Before, it left an empty group behind, and authentik's retry hit the same error, so groups existed without members. The error now says what to do.
+- README: one owner per group (SCIM versus OIDC/SAML group provisioning), the prefix, and why groups can end up without members.
+
 ## 0.1.1-dev.1
 
 Development build: bump the `-dev.N` number for every build you want Nextcloud to upgrade to.

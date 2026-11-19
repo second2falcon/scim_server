@@ -38,4 +38,11 @@ class SettingsTest extends TestCase {
 		$this->expectException(\InvalidArgumentException::class);
 		(new Settings($config))->save('disable', 30, true, true, '(unclosed');
 	}
+
+	public function testPrefixIsValidated(): void {
+		$config = $this->createMock(IAppConfig::class);
+		$config->expects($this->never())->method('setValueString');
+		$this->expectException(\InvalidArgumentException::class);
+		(new Settings($config))->save('disable', 30, true, true, '', str_repeat('x', 41));
+	}
 }

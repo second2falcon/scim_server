@@ -131,6 +131,32 @@ Use the immutable object id: **`oid`**.
 
 I derived the Entra settings from Microsoft's documentation, not from a live tenant: verify the attribute names in your portal.
 
+## Groups: one owner per group
+
+> [!IMPORTANT]
+> **Let only one thing write a group's membership.** SCIM, `user_oidc` group provisioning and `user_saml` group mapping all
+> create groups and add/remove members. If two of them manage the same group they overwrite each other (a membership sync
+> removes members the other one added). When SCIM owns the groups, switch the others off: for `user_oidc` set *group
+> provisioning* off (`--group-provisioning=0`); for `user_saml` clear the group attribute mapping.
+
+SCIM uses the group name from the IdP as the Nextcloud group name, exactly as sent. That is also what `user_oidc` produces,
+so with OIDC the names line up. `user_saml` prefixes the group names it creates (`SAML_` unless you configured another prefix),
+so a user who logs in via SAML is in `SAML_DATA-MGMT` while authentik calls the group `DATA-MGMT`. To make SCIM write to that
+same group, set the **Group name prefix** in the SCIM Server settings to the prefix `user_saml` uses (`SAML_`).
+Nextcloud then stores the SCIM group `DATA-MGMT` as `SAML_DATA-MGMT`, while the IdP keeps seeing `DATA-MGMT`.
+The group filter is checked against the name without the prefix. Changing the prefix later does not rename existing groups.
+
+SCIM can only write to a group that already exists in Nextcloud (for example one `user_saml` created at a login) when
+*Only manage accounts and groups that were created through SCIM* is **off**; otherwise the group and its members are
+invisible to SCIM and authentik's sync of them fails.
+
+**Groups that appear without members** almost always mean the members are accounts SCIM does not know. A member can only be
+added if its account was created through SCIM (or, with the setting above off, already exists). Look at the authentik
+provider's sync events: a failing *user* sync (typically a `409` because the account already exists from an SSO login, which
+SCIM then cannot see) means authentik leaves that user out of the group, and a group request answered with `400 Unknown member`
+names the id it could not resolve. Fix the user sync first (delete the stray account, or switch the setting off so SCIM can
+adopt it), then run a new sync.
+
 ## SCIM support
 
 `GET /ServiceProviderConfig`, `/Users` and `/Groups` with POST, GET (list and single), PUT, PATCH and DELETE.

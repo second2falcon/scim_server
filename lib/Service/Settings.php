@@ -61,6 +61,14 @@ class Settings {
 		return $this->config->getValueString(self::APP, 'group_regex', '');
 	}
 
+	/**
+	 * Prepended to every group name from the identity provider, so SCIM writes to the groups another login app
+	 * creates, e.g. `SAML_` for user_saml (its default group prefix): authentik's `DATA-MGMT` is Nextcloud's `SAML_DATA-MGMT`.
+	 */
+	public function groupPrefix(): string {
+		return $this->config->getValueString(self::APP, 'group_prefix', '');
+	}
+
 	public function groupAllowed(string $name): bool {
 		$regex = $this->groupRegex();
 		return $regex === '' || preg_match(self::pattern($regex), $name) === 1;
@@ -70,12 +78,13 @@ class Settings {
 		return '~' . str_replace('~', '\\~', $regex) . '~u';
 	}
 
-	public function save(string $mode, int $days, bool $protect, bool $managedOnly, string $groupRegex = ''): void {
-		if (!in_array($mode, self::MODES, true) || $days < 1 || $days > 3650
+	public function save(string $mode, int $days, bool $protect, bool $managedOnly, string $groupRegex = '', string $groupPrefix = ''): void {
+		if (!in_array($mode, self::MODES, true) || $days < 1 || $days > 3650 || mb_strlen($groupPrefix) > 40 || preg_match('/[\\x00-\\x1f]/', $groupPrefix)
 			|| ($groupRegex !== '' && @preg_match(self::pattern($groupRegex), '') === false)) {
 			throw new \InvalidArgumentException('Invalid settings (is the group filter a valid regular expression?)');
 		}
 		$this->config->setValueString(self::APP, 'group_regex', $groupRegex);
+		$this->config->setValueString(self::APP, 'group_prefix', $groupPrefix);
 		$this->config->setValueString(self::APP, 'delete_mode', $mode);
 		$this->config->setValueInt(self::APP, 'purge_days', $days);
 		$this->config->setValueBool(self::APP, 'protect_admins', $protect);

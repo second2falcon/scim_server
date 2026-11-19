@@ -121,6 +121,25 @@ req DELETE "/Users/$BOSS"; expect "admin cannot be deprovisioned" 403
 req PUT "/Users/$BOSS" '{"userName":"boss","emails":[{"value":"evil@example.org","primary":true}]}'; expect "admin email cannot be changed" 403
 [[ "$(occ user:info boss --output=json | jq -r '.email // ""')" == "" ]] && ok "admin email untouched" || bad "admin email untouched" ""
 
+# --- group prefix (e.g. user_saml's SAML_): SCIM writes to the prefixed group, the IdP only sees the plain name
+occ config:app:set scim_server group_prefix --value='SAML_' >/dev/null
+req POST /Users '{"userName":"erin"}'; UID_ERIN=$(jq -r .id <<<"$BODY")
+req POST /Groups "{\"displayName\":\"DATA-MGMT\",\"members\":[{\"value\":\"$UID_ERIN\"}]}"; expect "create group with a prefix" 201
+field "the IdP sees the plain name" .displayName DATA-MGMT
+[[ "$(occ group:list --output=json | jq -r '.["SAML_DATA-MGMT"] | join(",")')" == "erin" ]] && ok "Nextcloud has SAML_DATA-MGMT with the member" || bad "Nextcloud has SAML_DATA-MGMT with the member" ""
+[[ $(occ group:list --output=json | jq 'has("DATA-MGMT")') == false ]] && ok "no unprefixed group" || bad "no unprefixed group" ""
+req GET '/Groups?filter=displayName%20eq%20%22DATA-MGMT%22'; field "found by the plain name" .totalResults 1
+# a group a SAML login already created is adopted (needs managed_only off, as set above)
+occ group:add SAML_PRE >/dev/null
+req POST /Groups '{"displayName":"PRE"}'; expect "existing prefixed group is a conflict" 409
+req GET '/Groups?filter=displayName%20eq%20%22PRE%22'; PRE=$(jq -r '.Resources[0].id' <<<"$BODY")
+req PATCH "/Groups/$PRE" "{\"Operations\":[{\"op\":\"add\",\"path\":\"members\",\"value\":[{\"value\":\"$UID_ERIN\"}]}]}"; expect "adopted group gets members" 200
+[[ "$(occ group:list --output=json | jq -r '.["SAML_PRE"] | join(",")')" == "erin" ]] && ok "member is in SAML_PRE" || bad "member is in SAML_PRE" ""
+# an unknown member must not leave an empty group behind
+req POST /Groups '{"displayName":"GHOSTS","members":[{"value":"00000000-0000-4000-8000-000000000000"}]}'; expect "unknown member is rejected" 400
+[[ $(occ group:list --output=json | jq 'has("SAML_GHOSTS")') == false ]] && ok "and no empty group is created" || bad "and no empty group is created" ""
+occ config:app:set scim_server group_prefix --value='' >/dev/null
+
 # --- bookkeeping follows deletions made outside SCIM
 req POST /Users '{"userName":"dave","externalId":"ext-dave"}'; OLD_DAVE=$(jq -r .id <<<"$BODY")
 occ user:delete dave >/dev/null

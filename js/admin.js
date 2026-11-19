@@ -25,6 +25,7 @@
 			protectAdmins: $('scim-protect').checked,
 			managedOnly: $('scim-managed').checked,
 			groupRegex: $('scim-group-regex').value,
+			groupPrefix: $('scim-group-prefix').value,
 		})
 		$('scim-status').textContent = r.ok ? '✓' : (r.json.error || '✗')
 	}))

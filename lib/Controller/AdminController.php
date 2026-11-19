@@ -24,9 +24,9 @@ class AdminController extends Controller {
 	}
 
 	#[PasswordConfirmationRequired]
-	public function save(string $deleteMode, int $purgeDays, bool $protectAdmins, bool $managedOnly, string $groupRegex = ''): DataResponse {
+	public function save(string $deleteMode, int $purgeDays, bool $protectAdmins, bool $managedOnly, string $groupRegex = '', string $groupPrefix = ''): DataResponse {
 		try {
-			$this->settings->save($deleteMode, $purgeDays, $protectAdmins, $managedOnly, trim($groupRegex));
+			$this->settings->save($deleteMode, $purgeDays, $protectAdmins, $managedOnly, trim($groupRegex), $groupPrefix);
 		} catch (\InvalidArgumentException $e) {
 			return new DataResponse(['error' => $e->getMessage()], Http::STATUS_BAD_REQUEST);
 		}
