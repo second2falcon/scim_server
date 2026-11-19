@@ -67,6 +67,12 @@ declare(strict_types=1);
 		</label>
 	</p>
 	<p class="settings-hint"><?php p($l->t('Prepended to the group names of the identity provider, so SCIM writes to the groups your login app already uses (user_saml names its groups SAML_<name> by default; user_oidc uses the plain name). The filter above is checked against the name without the prefix. Changing it later does not rename existing groups.')); ?></p>
+	<p>
+		<label><?php p($l->t('Existing groups whose members SCIM may manage (regular expression, empty: none)')); ?>
+			<input type="text" id="scim-adopt-regex" value="<?php p($_['adoptRegex']); ?>" placeholder="^DATA-">
+		</label>
+	</p>
+	<p class="settings-hint"><?php p($l->t('Only matters while "Only manage accounts and groups that were created through SCIM" is on. For groups that already exist (for example created by a SAML or OIDC login) and match, SCIM adds and removes only the accounts it created. It never renames such a group, never deletes it (an identity-provider delete only removes the SCIM accounts from it), and never touches other members. Matched against the name without the prefix, on the exact group id. Anyone who can create accounts or edit groups at the identity provider can put accounts in these groups, so list only groups the identity provider should control.')); ?></p>
 	<p class="settings-hint"><?php p($l->t('Groups that do not match are acknowledged to the identity provider but never created in Nextcloud, and their members are ignored. The filter applies when a group is created, or when it is renamed to a name that matches. Groups that already exist are left alone.')); ?></p>
 	<p class="settings-hint"><?php p($l->t('An account that is marked inactive is always only disabled, and enabled again when it becomes active.')); ?></p>
 	<button type="button" id="scim-save"><?php p($l->t('Save')); ?></button>

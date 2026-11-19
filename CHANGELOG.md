@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## 0.1.1-dev.3
+
+- **Adopt list** (admin setting *Existing groups whose members SCIM may manage*, a regular expression): lets SCIM manage the membership of existing groups, such as the `SAML_` groups that `user_saml` creates, while "only manage what SCIM created" stays on. For these groups SCIM touches only the accounts it manages, never renames them and never deletes them (an IdP-side delete only removes the SCIM accounts), and only the exact group id counts. Off (empty) by default.
+
 ## 0.1.1-dev.2
 
 - **Group name prefix** (admin setting): prepended to the group names from the IdP, so SCIM writes to the group `user_saml` created (`SAML_DATA-MGMT` for authentik's `DATA-MGMT`). The IdP keeps seeing the plain name; the group filter is checked against it too.

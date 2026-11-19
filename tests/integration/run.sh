@@ -148,4 +148,25 @@ req GET '/Users?filter=userName%20eq%20%22dave%22'
 [[ "$(jq -r '.Resources[0].id' <<<"$BODY")" != "$OLD_DAVE" ]] && ok "a new account with an old id gets a new SCIM id" || bad "a new account with an old id gets a new SCIM id" ""
 field "and no old externalId" '.Resources[0].externalId // ""' ""
 
+# --- adopting existing groups (managed-only on): members only, never rename or delete
+occ config:app:set scim_server managed_only --value=true --type=boolean >/dev/null
+occ group:add adoptme >/dev/null; occ group:add keepout >/dev/null
+OC_PASS='Passw0rd!xx-ci' occ user:add --password-from-env samlish >/dev/null
+occ group:adduser adoptme samlish; occ group:adduser keepout samlish
+req POST /Users '{"userName":"frank"}'; UID_FRANK=$(jq -r .id <<<"$BODY")
+req POST /Groups '{"displayName":"adoptme"}'; expect "existing group is a conflict without an adopt rule" 409
+req GET '/Groups?filter=displayName%20eq%20%22adoptme%22'; field "and invisible" .totalResults 0
+occ config:app:set scim_server adopt_groups_regex --value='^adoptme$' >/dev/null
+req GET '/Groups?filter=displayName%20eq%20%22adoptme%22'; field "visible once on the adopt list" .totalResults 1; AD=$(jq -r '.Resources[0].id' <<<"$BODY")
+req GET '/Groups?filter=displayName%20eq%20%22keepout%22'; field "other existing groups stay invisible" .totalResults 0
+req PATCH "/Groups/$AD" "{\"Operations\":[{\"op\":\"add\",\"path\":\"members\",\"value\":[{\"value\":\"$UID_FRANK\"}]}]}"; expect "SCIM account joins the existing group" 200
+[[ "$(occ group:list --output=json | jq -r '.adoptme | sort | join(",")')" == "frank,samlish" ]] && ok "other members are left alone" || bad "other members are left alone" ""
+req PUT "/Groups/$AD" '{"displayName":"adoptme-renamed","members":[]}'; expect "replace with an empty member list" 200
+[[ "$(occ group:list --output=json | jq -r '.adoptme | join(",")')" == "samlish" ]] && ok "only the SCIM account was removed" || bad "only the SCIM account was removed" ""
+[[ "$(occ group:info adoptme --output=json | jq -r '.displayName // .gid')" == adoptme ]] && ok "the group was not renamed" || bad "the group was not renamed" ""
+req DELETE "/Groups/$AD"; expect "delete adopted group" 204
+[[ "$(occ group:list --output=json | jq -r '.adoptme | join(",")')" == "samlish" ]] && ok "the group and its other members survive an IdP delete" || bad "the group and its other members survive an IdP delete" ""
+occ config:app:set scim_server adopt_groups_regex --value='' >/dev/null
+occ config:app:set scim_server managed_only --value=false --type=boolean >/dev/null
+
 echo; [[ $fails == 0 ]] && echo "all passed" || { echo "$fails failed"; tail -n 20 data/nextcloud.log 2>/dev/null || true; exit 1; }

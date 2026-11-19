@@ -241,4 +241,54 @@ class GroupServiceTest extends TestCase {
 		$res = $svc->list('displayName eq "DATA-MGMT"', 1, 100);
 		$this->assertSame('DATA-MGMT', $res['Resources'][0]['displayName']);
 	}
+
+	/** A service with "managed only" on, where existing groups matching the adopt regex may be managed, and a group that SCIM did not create. */
+	private function adoptedSetup(bool $adoptable): array {
+		$settings = $this->createMock(Settings::class);
+		$settings->method('managedOnly')->willReturn(true);
+		$settings->method('groupAdoptable')->willReturn($adoptable);
+		$store = $this->createMock(Store::class);
+		$store->method('gidByScimId')->with('gsid')->willReturn('SAML_DATA');
+		$store->method('groupRow')->willReturn(['scim_id' => 'gsid', 'external_id' => null, 'created_at' => 1, 'managed' => false]);
+		$store->method('ignoredGroupRow')->willReturn(null);
+		$store->method('uidByScimId')->willReturnCallback(fn ($id) => $id === 'usid' ? 'scimuser' : null);
+		// the SCIM-created account is managed; the SAML account is not
+		$store->method('userRow')->willReturnCallback(fn ($uid) => ['scim_id' => 'x' . $uid, 'external_id' => null, 'created_at' => 1, 'pending_delete_at' => null, 'managed' => $uid === 'scimuser']);
+		$scim = $this->member('scimuser');
+		$saml = $this->member('samluser');
+		$g = $this->createMock(IGroup::class);
+		$g->method('getGID')->willReturn('SAML_DATA');
+		$g->method('getDisplayName')->willReturn('SAML_DATA');
+		$g->method('getUsers')->willReturn([$scim, $saml]);
+		$this->gm->method('get')->with('SAML_DATA')->willReturn($g);
+		$this->um->method('get')->willReturn($scim);
+		return [new GroupService($this->gm, $this->um, $store, $settings, $this->createMock(IURLGenerator::class)), $g, $scim, $saml, $store];
+	}
+
+	public function testExistingGroupNotOnTheAdoptListStaysInvisible(): void {
+		[$svc] = $this->adoptedSetup(false);
+		try {
+			$svc->get('gsid');
+			$this->fail('expected 404');
+		} catch (ScimException $e) {
+			$this->assertSame(404, $e->status);
+		}
+	}
+
+	public function testAdoptedGroupOnlyChangesScimMembersAndKeepsItsName(): void {
+		[$svc, $g, $scim, $saml] = $this->adoptedSetup(true);
+		$g->method('inGroup')->willReturn(true);
+		$g->expects($this->never())->method('setDisplayName');
+		$g->expects($this->once())->method('removeUser')->with($scim); // empty member list: only the SCIM account goes
+		$res = $svc->replace('gsid', ['displayName' => 'Renamed', 'members' => []]);
+		$this->assertCount(0, array_filter($res['members'], fn ($m) => $m['value'] === 'xsamluser')); // the SAML member is not even listed
+	}
+
+	public function testDeletingAnAdoptedGroupOnlyRemovesScimMembers(): void {
+		[$svc, $g, $scim, , $store] = $this->adoptedSetup(true);
+		$g->expects($this->never())->method('delete');
+		$g->expects($this->once())->method('removeUser')->with($scim);
+		$store->expects($this->once())->method('deleteGroupRow')->with('SAML_DATA');
+		$svc->delete('gsid');
+	}
 }

@@ -146,9 +146,23 @@ same group, set the **Group name prefix** in the SCIM Server settings to the pre
 Nextcloud then stores the SCIM group `DATA-MGMT` as `SAML_DATA-MGMT`, while the IdP keeps seeing `DATA-MGMT`.
 The group filter is checked against the name without the prefix. Changing the prefix later does not rename existing groups.
 
-SCIM can only write to a group that already exists in Nextcloud (for example one `user_saml` created at a login) when
-*Only manage accounts and groups that were created through SCIM* is **off**; otherwise the group and its members are
-invisible to SCIM and authentik's sync of them fails.
+**Groups that already exist** (for example `SAML_DATA-MGMT`, created by `user_saml` at a login) are invisible to SCIM by default,
+because SCIM only manages what it created. There are two ways to let SCIM manage the membership of an existing group:
+
+- **Allow-list (recommended):** in the settings, *Existing groups whose members SCIM may manage*: a regular expression on the
+  group name without the prefix, for example `^DATA-` or `^(DATA-MGMT|SALES)$`. Matching existing groups are then managed by SCIM
+  with these limits: SCIM adds and removes **only the accounts it manages** (never SAML, OIDC or local members), it **never
+  renames** such a group, and it **never deletes** it (when the IdP deletes the group, SCIM only removes its own accounts from
+  it; deleting a Nextcloud group would also delete its shares and permissions for members SCIM does not manage). Only the
+  exact group id counts, so a group with a look-alike display name is not picked up.
+- **Everything:** switch off *Only manage accounts and groups that were created through SCIM*. SCIM then sees and can take over
+  every account and group, including renaming and deleting groups. Use this only on a dedicated setup.
+
+> [!WARNING]
+> Whoever can create accounts or edit groups at the identity provider (or holds the SCIM token) can put accounts into every group
+> on the allow-list, and with it gets whatever that Nextcloud group grants (shares, group folders, app restrictions, subadmin
+> rights). List only groups the identity provider should control. The `admin` group stays protected unless you switch the
+> administrator protection off; more groups can be protected with `occ config:app:set scim_server protected_groups --value="gid1,gid2"`.
 
 **Groups that appear without members** almost always mean the members are accounts SCIM does not know. A member can only be
 added if its account was created through SCIM (or, with the setting above off, already exists). Look at the authentik

@@ -31,6 +31,7 @@ class Admin implements ISettings {
 			'managedOnly' => $this->settings->managedOnly(),
 			'groupRegex' => $this->settings->groupRegex(),
 			'groupPrefix' => $this->settings->groupPrefix(),
+			'adoptRegex' => $this->settings->adoptRegex(),
 			'baseUrl' => preg_replace('#/ServiceProviderConfig$#', '', $this->urls->linkToRouteAbsolute('scim_server.scim.serviceProviderConfig')),
 			'settingsUrl' => $this->urls->linkToRoute('scim_server.admin.save'),
 			'tokensUrl' => $this->urls->linkToRoute('scim_server.admin.createToken'),

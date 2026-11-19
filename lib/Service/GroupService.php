@@ -185,7 +185,7 @@ class GroupService {
 		}
 		$group = $this->find($scimId);
 		$this->guardAdmin($group);
-		if (is_string($body['displayName'] ?? null) && $body['displayName'] !== '') {
+		if (is_string($body['displayName'] ?? null) && $body['displayName'] !== '' && !$this->foreign($group)) {
 			$this->rename($group, $this->prefixed($body['displayName']));
 		}
 		$this->setExternalId($group, $body);
@@ -206,7 +206,7 @@ class GroupService {
 		$group = $this->find($scimId);
 		$this->guardAdmin($group);
 		$changes = Patch::groupChanges($body);
-		if ($changes['displayName'] !== null) {
+		if ($changes['displayName'] !== null && !$this->foreign($group)) {
 			$this->rename($group, $this->prefixed($changes['displayName']));
 		}
 		foreach ($changes['members'] as [$op, $ids]) {
@@ -227,6 +227,15 @@ class GroupService {
 		$group = $this->find($scimId);
 		$this->guardAdmin($group);
 		$gid = $group->getGID();
+		if ($this->foreign($group)) {
+			foreach ($group->getUsers() as $u) { // only the accounts SCIM manages leave; the group and its other members stay
+				if ($this->userVisible($u->getUID())) {
+					$group->removeUser($u);
+				}
+			}
+			$this->store->deleteGroupRow($gid);
+			return;
+		}
 		$group->delete(); // removes memberships only, never accounts or files
 		$this->store->deleteGroupRow($gid);
 	}
@@ -327,7 +336,20 @@ class GroupService {
 	}
 
 	private function groupVisible(string $gid): bool {
-		return !$this->settings->managedOnly() || $this->store->groupRow($gid)['managed'];
+		return !$this->settings->managedOnly() || $this->store->groupRow($gid)['managed'] || $this->adoptable($gid);
+	}
+
+	/** An existing group that the admin allowed SCIM to manage the members of (Settings::adoptRegex). */
+	private function adoptable(string $gid): bool {
+		return $this->settings->groupAdoptable($this->plain($gid));
+	}
+
+	/**
+	 * A group SCIM did not create and may only manage the members of: it keeps its name and is never deleted,
+	 * because deleting a group also deletes its shares and permissions for members that SCIM does not manage.
+	 */
+	private function foreign(IGroup $group): bool {
+		return $this->settings->managedOnly() && !$this->store->groupRow($group->getGID())['managed'];
 	}
 
 	private function guardAdmin(IGroup $group): void {
