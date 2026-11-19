@@ -117,11 +117,14 @@ the same value, otherwise users get a second, empty account on first login.
    - In the enterprise application open *Single sign-on → SAML*. In *Basic SAML Configuration* enter the *Identifier (Entity ID)*
      and *Reply URL (Assertion Consumer Service URL)* that Nextcloud shows under *Administration settings → SSO & SAML
      authentication* (service provider data).
-   - In *Attributes & Claims* check that the claim with the Object ID is sent. Entra normally includes
-     `http://schemas.microsoft.com/identity/claims/objectidentifier` (source `user.objectid`).
+   - In *Attributes & Claims* the Object ID is **not** sent by default (the required *Unique User Identifier (Name ID)* is
+     the user principal name, which can change). Choose *Add new claim* and create one: *Name* `objectid`, *Source*
+     attribute, *Source attribute* `user.objectid`. The default claims (`displayname`, `name`, `emailaddress`, `givenname`,
+     `surname`) can stay.
    - In Nextcloud (*SSO & SAML authentication*) enter the Entra *Login URL*, *Microsoft Entra Identifier* and the
-     *Certificate (Base64)* as IdP data, and set **Attribute to map the UID to** to
-     `http://schemas.microsoft.com/identity/claims/objectidentifier`, so the Nextcloud user id is the Object ID.
+     *Certificate (Base64)* as IdP data, and set **Attribute to map the UID to** to `objectid`, so the Nextcloud user id is
+     the Object ID. Map the display name and email attributes to the claims `http://schemas.microsoft.com/identity/claims/displayname`
+     and `http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress` if you want `user_saml` to fill them in at login.
    - Groups: `user_saml` puts users in groups it names with a prefix (`SAML_` by default). If SCIM manages the groups, clear
      the group attribute mapping in `user_saml` and read "Groups: one owner per group" below.
 3. **Provisioning** (enterprise application → *Provisioning*, mode *Automatic*): *Tenant URL*
@@ -152,7 +155,7 @@ the same value, otherwise users get a second, empty account on first login.
 4. **Test** with *Provision on demand* for one user (a regular cycle runs about every 40 minutes): the Nextcloud account
    id must be the user's *Object ID*. Then sign in with Entra and check that no second account appears.
 
-The SAML field names above come from memory of the Entra and `user_saml` screens and may differ in your version: check them in the portals.
+The Entra claims are as configured in a working test; the `user_saml` field names come from memory and may differ in your version: check them in Nextcloud.
 
 ## Groups: one owner per group
 
