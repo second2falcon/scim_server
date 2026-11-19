@@ -29,7 +29,7 @@ Requires Nextcloud 33-35, PHP 8.2-8.5.
 
 1. Install the app and open *Administration settings → Security → SCIM Server*. Create a token (shown once) and note the
    **SCIM base URL**, e.g. `https://cloud.example.com/index.php/apps/scim_server/v2`.
-   Headless: `occ scim:token:create authentik`.
+   (Without the web UI: `occ scim:token:create authentik`.)
 2. In authentik create a **SCIM Provider**: URL = the base URL, authentication = *Token*, paste the token.
    Add it as a **backchannel provider** of your Nextcloud application (the one that does the OIDC/SAML login) and bind the
    users/groups that should get an account.
@@ -63,12 +63,16 @@ Only do this with a provider you trust: it can now log in as any account with th
 ### authentik
 
 1. **OAuth2/OpenID provider:** set *Subject mode* to **Based on user UUID**. `sub` is now the user's UUID.
-2. **`user_oidc`:** provider with *User ID mapping* = `sub` and *Use unique user id* off:
+2. **`user_oidc` (Nextcloud web UI):** sign in as an administrator and open *Administration settings → OpenID Connect*
+   (the app is *OpenID Connect user backend*). Edit your authentik provider, or add one, and set:
+   - *Discovery endpoint*, *Client ID* and *Client secret* from the authentik OAuth2/OpenID provider
+     (the discovery URL looks like `https://authentik.example.com/application/o/<slug>/.well-known/openid-configuration`);
+   - in the attribute mapping section, *User ID mapping* = `sub`;
+   - **untick** *Use unique user ID* (and leave provider-based ids off);
+   - **untick** group provisioning, if SCIM manages the groups (see "Groups: one owner per group");
+   - save.
 
-   ```bash
-   occ user_oidc:provider authentik -c <client id> --clientsecret <secret> -d https://authentik.example.com/application/o/<slug>/.well-known/openid-configuration \
-     --unique-uid=0 --mapping-uid=sub --group-provisioning=0
-   ```
+   (Command line instead: `occ user_oidc:provider authentik -c <client id> --clientsecret <secret> -d <discovery url> --unique-uid=0 --mapping-uid=sub --group-provisioning=0`.)
 3. **SCIM provider:** create a *SCIM Mapping* (Customization → Property Mappings) with this expression:
 
    ```python
