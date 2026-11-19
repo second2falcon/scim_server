@@ -16,7 +16,7 @@
 - Authenticates with revocable bearer tokens that are stored hashed.
 
 Users still sign in through your SSO app (user_oidc or user_saml); this app only manages their lifecycle. See the README for the authentik setup.]]></description>
-	<version>0.1.1-dev.3</version>
+	<version>0.1.1-dev.4</version>
 	<licence>AGPL-3.0-or-later</licence>
 	<author>SCIM Server contributors</author>
 	<namespace>ScimServer</namespace>

@@ -50,6 +50,8 @@ expect "create user" 201; field "created userName" .userName ann; UID_ANN=$(jq -
 req POST /Users '{"userName":"ann"}'; expect "duplicate user is a conflict" 409
 req GET '/Users?filter=userName%20eq%20%22ann%22'; expect "filter userName" 200; field "one match" .totalResults 1
 req GET '/Users?filter=externalId%20eq%20%22ext-ann%22'; field "filter externalId" '.Resources[0].userName' ann
+req GET '/Users?filter=emails%5Btype%20eq%20%22home%22%5D.value%20eq%20%22ann%40example.com%22'; field "filter on an email (Entra matching attribute)" '.Resources[0].userName' ann
+req GET '/Users?filter=emails%5Btype%20eq%20%22home%22%5D.value%20eq%20%22nobody%40example.com%22'; field "unknown email is an empty list" .totalResults 0
 req GET '/Users?filter=userName%20eq%20%22nobody%22'; field "no match is an empty list" .totalResults 0
 req GET "/Users/$UID_ANN"; expect "get user" 200
 req GET /Users/00000000-0000-4000-8000-000000000000; expect "unknown user" 404

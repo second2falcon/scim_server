@@ -124,6 +124,12 @@ Use the immutable object id: **`oid`**.
    | `displayName` | `displayName` | |
    | `active` | `Switch([IsSoftDeleted], …)` | keep the default |
 
+   **Matching precedence:** Entra looks accounts up with the mapping that has *Matching precedence* 1 (open *Edit attribute
+   mapping*, "Use this attribute to match objects"). By default that is `userPrincipalName` -> `emails[type eq "home"].value`.
+   Switch matching to `objectId` -> `userName` and untick it on the email mapping. Entra would otherwise find accounts by
+   UPN and then send the Object ID as `userName`, which is refused (`mutability`). The app does answer email lookups (needed
+   for *Test Connection*), but the lookup key and the id should be the same stable value.
+
    Group mappings can stay as they are (`displayName`, `members`). Scope: *Sync only assigned users and groups*.
    Entra uses PATCH, including its capitalised operations, which the app supports.
 4. **Test** with *Provision on demand* for one user (a regular cycle runs about every 40 minutes): the Nextcloud account

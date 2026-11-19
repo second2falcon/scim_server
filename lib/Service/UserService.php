@@ -69,12 +69,13 @@ class UserService {
 		$count = max(0, min($count, self::MAX));
 		$f = Filter::parse($filter);
 		if ($f !== null) {
-			$user = match ($f[0]) {
-				'username' => $this->users->get($f[1]),
-				'externalid' => ($uid = $this->store->uidByExternalId($f[1])) !== null ? $this->users->get($uid) : null,
+			$candidates = match ($f[0]) {
+				'username' => [$this->users->get($f[1])],
+				'externalid' => [($uid = $this->store->uidByExternalId($f[1])) !== null ? $this->users->get($uid) : null],
+				'emails.value', 'emails' => $this->users->getByEmail($f[1]), // Entra ID: matching attribute is an email
 				default => throw new ScimException(400, "Cannot filter on $f[0]", 'invalidFilter'),
 			};
-			$found = $user === null || !$this->visible($user->getUID()) ? [] : [$user];
+			$found = array_values(array_filter($candidates, fn ($u) => $u !== null && $this->visible($u->getUID())));
 			$total = count($found);
 			$page = $startIndex === 1 ? $found : [];
 		} elseif ($this->settings->managedOnly()) {

@@ -41,6 +41,12 @@ class FilterPatchTest extends TestCase {
 		}
 	}
 
+	public function testEntraEmailFilterWithSelector(): void {
+		$this->assertSame(['emails.value', 'a@example.com'], Filter::parse('emails[type eq "home"].value eq "a@example.com"'));
+		$this->assertSame(['emails.value', 'a@example.com'], Filter::parse('emails.value eq "a@example.com"'));
+		$this->assertSame(['username', 'x'], Filter::parse('urn:ietf:params:scim:schemas:core:2.0:User:userName eq "x"'));
+	}
+
 	public function testUnsupportedFilter(): void {
 		$this->expectException(ScimException::class);
 		Filter::parse('userName co "x"');

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## 0.1.1-dev.4
+
+- Filters on an email are understood (`emails[type eq "work"].value eq "..."`, `emails.value eq "..."`), as Entra ID sends when its matching attribute is the email. Before, *Test Connection* failed with `invalidFilter`.
+- README: Entra matching precedence.
+
 ## 0.1.1-dev.3
 
 - **Adopt list** (admin setting *Existing groups whose members SCIM may manage*, a regular expression): lets SCIM manage the membership of existing groups, such as the `SAML_` groups that `user_saml` creates, while "only manage what SCIM created" stays on. For these groups SCIM touches only the accounts it manages, never renames them and never deletes them (an IdP-side delete only removes the SCIM accounts), and only the exact group id counts. Off (empty) by default.
