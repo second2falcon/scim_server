@@ -102,19 +102,28 @@ sending the new UUID for them and the app refuses (`userName cannot be changed`)
 remove the provider's synced objects in authentik (or just create a fresh SCIM provider), then run a new sync.
 Existing users cannot be renamed in Nextcloud; moving an existing instance to UUID ids means migrating the users' data.
 
-### Microsoft Entra ID
+### Microsoft Entra ID (with SAML)
 
-Entra's `sub` is different for every application, and `preferred_username`/`upn`/`email` can change, so neither is a good id.
-Use the immutable object id: **`oid`**.
+This section covers Entra ID with **SAML** login (`user_saml`). Entra with OpenID Connect is not documented yet.
 
-1. **One application for login and provisioning:** *Enterprise applications → New application → Create your own
-   application → Integrate any other application (non-gallery)*. This also creates an App registration; there add a Web
-   redirect URI `https://<nextcloud>/apps/user_oidc/code` and a client secret. Users and groups assigned to the enterprise
-   application then decide both who can log in and who is provisioned.
-2. **`user_oidc`:** discovery URL `https://login.microsoftonline.com/<tenant-id>/v2.0/.well-known/openid-configuration`,
-   *User ID mapping* = `oid`, *Use unique user id* off, provider-based ids off. The `oid` claim is in the ID token for
-   work/school accounts. Turn *group provisioning* off and let SCIM manage groups: Entra's `groups` claim holds group object
-   ids, not names, so it would create a second set of groups.
+The user principal name and the email can change, so they make poor Nextcloud user ids. Use the immutable **Object ID**
+(a GUID) as the id: Entra sends it to SCIM as `userName` (below) and to Nextcloud at SAML login as a claim, and both must be
+the same value, otherwise users get a second, empty account on first login.
+
+1. **One enterprise application for login and provisioning:** *Enterprise applications → New application → Create your own
+   application → Integrate any other application (non-gallery)*. Users and groups assigned to it decide both who can log in
+   and who is provisioned.
+2. **SAML login:**
+   - In the enterprise application open *Single sign-on → SAML*. In *Basic SAML Configuration* enter the *Identifier (Entity ID)*
+     and *Reply URL (Assertion Consumer Service URL)* that Nextcloud shows under *Administration settings → SSO & SAML
+     authentication* (service provider data).
+   - In *Attributes & Claims* check that the claim with the Object ID is sent. Entra normally includes
+     `http://schemas.microsoft.com/identity/claims/objectidentifier` (source `user.objectid`).
+   - In Nextcloud (*SSO & SAML authentication*) enter the Entra *Login URL*, *Microsoft Entra Identifier* and the
+     *Certificate (Base64)* as IdP data, and set **Attribute to map the UID to** to
+     `http://schemas.microsoft.com/identity/claims/objectidentifier`, so the Nextcloud user id is the Object ID.
+   - Groups: `user_saml` puts users in groups it names with a prefix (`SAML_` by default). If SCIM manages the groups, clear
+     the group attribute mapping in `user_saml` and read "Groups: one owner per group" below.
 3. **Provisioning** (enterprise application → *Provisioning*, mode *Automatic*): *Tenant URL*
    `https://<nextcloud>/index.php/apps/scim_server/v2`, *Secret token* = a token from this app's admin settings, then
    *Test Connection*. Change the user attribute mappings **before the first cycle** (a later `userName` change gets
@@ -143,7 +152,7 @@ Use the immutable object id: **`oid`**.
 4. **Test** with *Provision on demand* for one user (a regular cycle runs about every 40 minutes): the Nextcloud account
    id must be the user's *Object ID*. Then sign in with Entra and check that no second account appears.
 
-I derived the Entra settings from Microsoft's documentation, not from a live tenant: verify the attribute names in your portal.
+The SAML field names above come from memory of the Entra and `user_saml` screens and may differ in your version: check them in the portals.
 
 ## Groups: one owner per group
 
