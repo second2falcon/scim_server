@@ -5,7 +5,7 @@ Nextcloud already has a SCIM *client* (Nextcloud as the directory); this is the 
 and Nextcloud follows it. It runs entirely inside Nextcloud, no extra service needed.
 
 > [!CAUTION]
-> This app is **AI-generated** code. It is covered by unit tests and an automated end-to-end suite against Nextcloud, and it has been tested by hand with authentik (SCIM provisioning) and OpenID Connect (`user_oidc`) sign-in. It is still young and security-sensitive (it creates, disables and deletes accounts): review it, try it on a test instance first, and keep backups before pointing it at production.
+> This app is **AI-generated** code. It is covered by unit tests and an automated end-to-end suite against Nextcloud, and it has been tested by hand with authentik (SCIM provisioning, OpenID Connect sign-in through `user_oidc`) and with Microsoft Entra ID (SCIM provisioning, SAML sign-in through `user_saml`). It is still young and security-sensitive (it creates, disables and deletes accounts): review it, try it on a test instance first, and keep backups before pointing it at production.
 
 - **Provision**: users and groups created in the IdP appear in Nextcloud, with display name, email and group membership.
 - **Update**: changes in the IdP are applied; `active: false` **disables** the account (login blocked, data kept).
