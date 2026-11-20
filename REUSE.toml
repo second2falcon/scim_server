@@ -4,7 +4,7 @@ SPDX-PackageSupplier = "SCIM Server contributors"
 SPDX-PackageDownloadLocation = "https://github.com/second2falcon/scim_server"
 
 [[annotations]]
-path = ["README.md", "CHANGELOG.md", "docs/**", ".gitignore", "composer.json", "composer.lock", "SECURITY.md"]
+path = ["README.md", "CHANGELOG.md", "docs/**", ".gitignore", "composer.json", "composer.lock", "SECURITY.md", "tests/integration/package.json"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 SCIM Server contributors"
 SPDX-License-Identifier = "AGPL-3.0-or-later"

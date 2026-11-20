@@ -207,6 +207,15 @@ PATCH: `add`/`replace`/`remove` on `active`, `displayName`, `externalId`, `email
 only feed it. Renaming a group changes its display name; its Nextcloud group id stays.
 `userName` cannot be changed (SCIM answers `mutability`).
 
+## How fast is provisioning?
+
+CI measures it on every run: a real authentik (Docker) pushes changes to Nextcloud over SCIM, and the job
+*Nextcloud stable35 provisioned by authentik* times how long it takes from the authentik API call until the change is visible
+in Nextcloud: account created (and in its group), account deactivated, account deleted. The numbers (median, min, max of 5
+runs per step) are in that job's summary on the Actions page, and the raw samples are in its `timings` artifact, so anyone can
+inspect them. They are end-to-end latencies of an idle system on a shared GitHub runner, polled every 100 ms. Most of the time
+is authentik's own worker queue, not this app; real instances will differ.
+
 ## Security
 
 Tokens are random, stored as SHA-256 hashes, compared in constant time and revocable. SCIM requests are only accepted

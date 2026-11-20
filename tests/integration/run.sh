@@ -3,25 +3,41 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # End-to-end test of the SCIM endpoints against a real, installed Nextcloud with the app enabled.
-# Usage: NC_DIR=/path/to/server tests/integration/run.sh   (needs php, curl, jq)
+# Usage: NC_DIR=/path/to/server SCIM_TEST_DISPOSABLE_INSTANCE=1 tests/integration/run.sh   (needs php, curl, jq)
 set -euo pipefail
-NC_DIR=${NC_DIR:?set NC_DIR to the Nextcloud server checkout}
+# Needs a running Nextcloud with the app enabled: start it with tests/integration/setup.sh first.
+# NC_URL: where Nextcloud is served (default http://127.0.0.1:8089). NC_DIR: the server checkout, for occ; or
+# OCC: a command prefix for occ instead, e.g. for AIO "docker exec -e OC_PASS --user www-data nextcloud-aio-nextcloud php /var/www/html/occ".
 # This creates an admin with a known password, a SCIM token, switches to immediate deletion and deletes accounts.
 [[ "${SCIM_TEST_DISPOSABLE_INSTANCE:-}" == 1 ]] || { echo "Only for a throw-away Nextcloud: it leaves an admin with a known password and deletes accounts. Set SCIM_TEST_DISPOSABLE_INSTANCE=1 to run." >&2; exit 1; }
-PORT=${PORT:-8089}
-cd "$NC_DIR"
-occ() { php occ "$@"; }
+NC_URL=${NC_URL:-http://127.0.0.1:8089}
+if [ -n "${OCC:-}" ]; then
+	occ() { $OCC "$@"; }
+else
+	: "${NC_DIR:?set NC_DIR (the server checkout) or OCC}"
+	occ() { php "$NC_DIR/occ" "$@"; }
+fi
+curl -sf "$NC_URL/status.php" >/dev/null || { echo "Nextcloud is not running at $NC_URL: run tests/integration/setup.sh first" >&2; exit 1; }
 
-php -S "127.0.0.1:$PORT" -t "$NC_DIR" > /tmp/scim-nc.log 2>&1 &
-SERVER=$!
-trap 'kill $SERVER 2>/dev/null || true' EXIT
-occ config:system:set trusted_domains 1 --value="127.0.0.1:$PORT" >/dev/null
-for _ in $(seq 30); do curl -sf "http://127.0.0.1:$PORT/status.php" >/dev/null && break; sleep 1; done
-
-BASE="http://127.0.0.1:$PORT/index.php/apps/scim_server/v2"
+BASE="$NC_URL/index.php/apps/scim_server/v2"
+# NC_ASSUME_HTTPS=1: Nextcloud reports https (overwriteprotocol, as behind a TLS reverse proxy), so SCIM must work
+# without the allow_http opt-out. NC_SMOKE=1: only the basic users and groups checks (no settings changes through occ:
+# some setups, e.g. All-in-One, cache app settings per PHP process, so those changes would not be seen).
 TOKEN=$(occ scim:token:create ci)
-[[ $(curl -s -o /dev/null -w '%{http_code}' "$BASE/Users" -H "Authorization: Bearer $TOKEN") == 403 ]] && echo "ok   - plain HTTP is refused" || { echo "FAIL - plain HTTP is refused"; exit 1; }
-occ config:app:set scim_server allow_http --value=true --type=boolean >/dev/null
+if [[ "${NC_ASSUME_HTTPS:-}" == 1 || "$NC_URL" == https://* ]]; then
+	[ -z "$(occ config:app:get scim_server allow_http 2>/dev/null || true)" ] && echo "ok   - allow_http is not set: SCIM has to work because Nextcloud reports https" || { echo "FAIL - allow_http is set"; exit 1; }
+	# The PHP of some setups (AIO) keeps config.php for a while: wait until the web process reports https.
+	for _ in $(seq 60); do
+		code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/ServiceProviderConfig" -H "Authorization: Bearer $TOKEN")
+		[[ "$code" != 403 ]] && break
+		sleep 3
+	done
+	[[ "$code" != 403 ]] && echo "ok   - the web process reports https (HTTP $code)" || { echo "FAIL - the web process still reports http after 3 minutes (overwriteprotocol = $(occ config:system:get overwriteprotocol))"; exit 1; }
+else
+code=$(curl -s -o /tmp/scim-first-response -w '%{http_code}' "$BASE/Users" -H "Authorization: Bearer $TOKEN")
+[[ "$code" == 403 ]] && echo "ok   - plain HTTP is refused" || { echo "FAIL - plain HTTP is refused (HTTP $code; overwriteprotocol = $(occ config:system:get overwriteprotocol || echo unset)); body: $(head -c 400 /tmp/scim-first-response); apps: $(occ app:list --enabled | grep -c scim_server)"; exit 1; }
+fi
+[[ "${NC_ASSUME_HTTPS:-}" == 1 || "$NC_URL" == https://* ]] || occ config:app:set scim_server allow_http --value=true --type=boolean >/dev/null
 fails=0
 ok() { echo "ok   - $1"; }
 bad() { echo "FAIL - $1 ($2)"; fails=$((fails + 1)); }
@@ -38,6 +54,11 @@ expect() { # description, expected status
 field() { [[ "$(jq -r "$2" <<<"$BODY")" == "$3" ]] && ok "$1" || bad "$1" "$2 = $(jq -r "$2" <<<"$BODY"), wanted $3"; }
 enabled() { occ user:info "$1" --output=json | jq -r .enabled; }
 
+finish() {
+	echo
+	if [[ $fails == 0 ]]; then echo "all passed"; exit 0; fi
+	echo "$fails failed"; tail -n 20 "${NC_DIR:-.}/data/nextcloud.log" 2>/dev/null || true; exit 1
+}
 # --- authentication
 [[ $(curl -s -o /dev/null -w '%{http_code}' "$BASE/Users") == 401 ]] && ok "no token is rejected" || bad "no token is rejected" ""
 [[ $(curl -s -o /dev/null -w '%{http_code}' "$BASE/Users" -H 'Authorization: Bearer nope') == 401 ]] && ok "wrong token is rejected" || bad "wrong token is rejected" ""
@@ -69,6 +90,8 @@ req PATCH "/Groups/$GID" "{\"Operations\":[{\"op\":\"remove\",\"path\":\"members
 req GET '/Groups?filter=displayName%20eq%20%22staff%22'; field "filter group" .totalResults 1
 req DELETE "/Groups/$GID"; expect "delete group" 204
 [[ $(occ user:list --output=json | jq 'has("ann")') == true ]] && ok "deleting a group keeps its users" || bad "deleting a group keeps its users" ""
+
+[[ "${NC_SMOKE:-}" != 1 ]] || finish
 
 # --- group filter
 occ config:app:set scim_server group_regex --value='^nc-' >/dev/null
@@ -171,4 +194,4 @@ req DELETE "/Groups/$AD"; expect "delete adopted group" 204
 occ config:app:set scim_server adopt_groups_regex --value='' >/dev/null
 occ config:app:set scim_server managed_only --value=false --type=boolean >/dev/null
 
-echo; [[ $fails == 0 ]] && echo "all passed" || { echo "$fails failed"; tail -n 20 data/nextcloud.log 2>/dev/null || true; exit 1; }
+finish

@@ -112,10 +112,245 @@ jobs:
           php occ maintenance:install $DB --admin-user=admin --admin-pass=admin
           php occ app:enable scim_server
           php occ app:list --enabled | grep scim_server
+      - name: Start Nextcloud
+        run: NC_DIR=$PWD/server server/apps/scim_server/tests/integration/setup.sh
       - name: End-to-end tests (SCIM requests against the running server)
         run: NC_DIR=$PWD/server SCIM_TEST_DISPOSABLE_INSTANCE=1 server/apps/scim_server/tests/integration/run.sh
+      - name: Browser tests and screenshots
+        working-directory: server/apps/scim_server/tests/integration
+        run: |
+          npm install --no-package-lock --no-audit --no-fund --ignore-scripts
+          node node_modules/playwright/cli.js install --with-deps chromium
+          SCREENSHOT_DIR=$RUNNER_TEMP/screenshots node browser.mjs
+      - name: Upload screenshots
+        id: screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: screenshots-nextcloud-${{ matrix.server }}
+          path: ${{ runner.temp }}/screenshots
+          if-no-files-found: ignore
+      - name: List screenshots in the job summary
+        if: always() && steps.screenshots.outputs.artifact-url != ''
+        run: |
+          echo "### Screenshots – Nextcloud ${{ matrix.server }}" >> $GITHUB_STEP_SUMMARY
+          echo "[Download all screenshots](${{ steps.screenshots.outputs.artifact-url }})" >> $GITHUB_STEP_SUMMARY
+          ls $RUNNER_TEMP/screenshots | sed 's/^/- /' >> $GITHUB_STEP_SUMMARY
       - name: Logs on failure
         if: failure()
         run: |
           tail -n 50 server/data/nextcloud.log || true
           tail -n 50 /tmp/scim-nc.log || true
+
+  integration-fpm:
+    # Production-like: nginx + PHP-FPM instead of PHP's built-in server.
+    name: Nextcloud stable35 behind nginx + PHP-FPM
+    runs-on: ubuntu-24.04
+    env:
+      NC_URL: http://127.0.0.1:8080
+      NC_WEB: external
+    steps:
+      - name: Checkout Nextcloud server
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: nextcloud/server
+          ref: stable35
+          submodules: true
+          path: server
+      - name: Checkout app
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: server/apps/scim_server
+      - name: Install nginx and PHP-FPM
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq nginx php8.3-fpm php8.3-cli php8.3-sqlite3 php8.3-xml php8.3-mbstring php8.3-gd php8.3-zip php8.3-intl php8.3-curl
+          sudo update-alternatives --set php /usr/bin/php8.3
+          # Run PHP-FPM and nginx as the runner user, who owns the checkout and config.php.
+          U=$(id -un); G=$(id -gn)
+          sudo sed -i "s/^user = .*/user = $U/; s/^group = .*/group = $G/; s/^;*listen.owner = .*/listen.owner = $U/; s/^;*listen.group = .*/listen.group = $G/" /etc/php/8.3/fpm/pool.d/www.conf
+          sudo sed -i "s/^user .*/user $U $G;/" /etc/nginx/nginx.conf
+          sed "s#NC_ROOT#$GITHUB_WORKSPACE/server#" server/apps/scim_server/tests/integration/nginx.conf | sudo tee /etc/nginx/sites-enabled/default >/dev/null
+          sudo systemctl restart php8.3-fpm nginx
+      - name: Install Nextcloud
+        working-directory: server
+        run: |
+          php occ maintenance:install --database=sqlite --admin-user=admin --admin-pass=admin
+          php occ app:enable scim_server
+      - name: Code-sign the archive with a throwaway certificate (the release's App Store path)
+        run: |
+          openssl req -x509 -nodes -newkey rsa:2048 -subj /CN=scim_server -days 1 -keyout "$RUNNER_TEMP/test.key" -out "$RUNNER_TEMP/test.crt" 2>/dev/null
+          archive=$(SIGN_KEY=$RUNNER_TEMP/test.key SIGN_CERT=$RUNNER_TEMP/test.crt OCC=$PWD/server/occ server/apps/scim_server/scripts/package.sh)
+          tar -xzOf "server/apps/scim_server/$archive" scim_server/appinfo/signature.json \
+            | php -r '$s = json_decode(stream_get_contents(STDIN), true); exit(isset($s["hashes"]["appinfo/info.xml"], $s["signature"], $s["certificate"]) ? 0 : 1);'
+      - name: Configure Nextcloud
+        run: NC_DIR=$PWD/server server/apps/scim_server/tests/integration/setup.sh
+      - name: End-to-end tests
+        run: NC_DIR=$PWD/server SCIM_TEST_DISPOSABLE_INSTANCE=1 server/apps/scim_server/tests/integration/run.sh
+      - name: Browser tests and screenshots
+        working-directory: server/apps/scim_server/tests/integration
+        run: |
+          npm install --no-package-lock --no-audit --no-fund --ignore-scripts
+          node node_modules/playwright/cli.js install --with-deps chromium
+          SCREENSHOT_DIR=$RUNNER_TEMP/screenshots node browser.mjs
+      - name: Upload screenshots
+        id: screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: screenshots-nextcloud-stable35-fpm
+          path: ${{ runner.temp }}/screenshots
+          if-no-files-found: ignore
+      - name: List screenshots in the job summary
+        if: always() && steps.screenshots.outputs.artifact-url != ''
+        run: |
+          echo "### Screenshots – Nextcloud stable35 (nginx + PHP-FPM)" >> $GITHUB_STEP_SUMMARY
+          echo "[Download all screenshots](${{ steps.screenshots.outputs.artifact-url }})" >> $GITHUB_STEP_SUMMARY
+          ls $RUNNER_TEMP/screenshots | sed 's/^/- /' >> $GITHUB_STEP_SUMMARY
+      - name: Logs on failure
+        if: failure()
+        run: |
+          tail -n 80 server/data/nextcloud.log || true
+          sudo tail -n 50 /var/log/nginx/error.log /var/log/php8.3-fpm.log || true
+
+  integration-aio:
+    # The real Nextcloud All-in-One containers (official manual-install compose file): Apache in front
+    # of PHP-FPM, PostgreSQL, Redis. SCIM Server is installed into custom_apps from its release archive,
+    # as in the README. This also tests that the Authorization header reaches PHP through Apache.
+    name: Nextcloud All-in-One (Docker)
+    runs-on: ubuntu-24.04
+    env:
+      ADMIN_PASS: Ci-Aio-Admin-Pass-2026
+      NC_URL: https://127.0.0.1
+      NC_WEB: external
+      OCC: docker exec -e OC_PASS --user www-data nextcloud-aio-nextcloud php /var/www/html/occ
+    steps:
+      - name: Checkout app
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: scim_server
+      - name: Checkout Nextcloud All-in-One
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: nextcloud/all-in-one
+          path: all-in-one
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: '8.4'
+          coverage: none
+      - name: Start Nextcloud AIO and install SCIM Server
+        run: scim_server/tests/aio/start.sh "$PWD/all-in-one" "$PWD/scim_server"
+      - name: TLS reverse proxy in front of AIO (nginx, self-signed certificate), as in a real installation
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq nginx
+          openssl req -x509 -nodes -newkey rsa:2048 -subj /CN=127.0.0.1 -addext "subjectAltName=IP:127.0.0.1" -days 1 \
+            -keyout "$RUNNER_TEMP/proxy.key" -out "$RUNNER_TEMP/proxy.crt" 2>/dev/null
+          sudo tee /etc/nginx/sites-enabled/default >/dev/null <<EOF
+          server {
+            listen 127.0.0.1:443 ssl;
+            ssl_certificate $RUNNER_TEMP/proxy.crt;
+            ssl_certificate_key $RUNNER_TEMP/proxy.key;
+            client_max_body_size 64M;
+            location / {
+              proxy_pass http://127.0.0.1:11000;
+              proxy_set_header Host \$host;
+              proxy_set_header X-Real-IP \$remote_addr;
+              proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto https;
+            }
+          }
+          EOF
+          sudo nginx -t && sudo systemctl restart nginx
+          echo "cacert = $RUNNER_TEMP/proxy.crt" > ~/.curlrc   # curl trusts the CI certificate
+          curl -sf https://127.0.0.1/status.php
+      - name: Configure Nextcloud
+        run: scim_server/tests/integration/setup.sh
+      - name: Browser tests and screenshots
+        working-directory: scim_server/tests/integration
+        env:
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/proxy.crt
+        run: |
+          npm install --no-package-lock --no-audit --no-fund --ignore-scripts
+          node node_modules/playwright/cli.js install --with-deps chromium
+          SCREENSHOT_DIR=$RUNNER_TEMP/screenshots node browser.mjs
+      - name: SCIM smoke test over real HTTPS (Apache + PHP-FPM behind the proxy, no allow_http)
+        # Smoke test only: AIO's PHP caches app settings per process, so the settings changes of the full test
+        # (made through occ) would not be seen there.
+        run: NC_SMOKE=1 SCIM_TEST_DISPOSABLE_INSTANCE=1 scim_server/tests/integration/run.sh
+      - name: Upload screenshots
+        id: screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: screenshots-nextcloud-aio
+          path: ${{ runner.temp }}/screenshots
+          if-no-files-found: ignore
+      - name: List screenshots in the job summary
+        if: always() && steps.screenshots.outputs.artifact-url != ''
+        run: |
+          echo "### Screenshots – Nextcloud All-in-One" >> $GITHUB_STEP_SUMMARY
+          echo "[Download all screenshots](${{ steps.screenshots.outputs.artifact-url }})" >> $GITHUB_STEP_SUMMARY
+          ls $RUNNER_TEMP/screenshots | sed 's/^/- /' >> $GITHUB_STEP_SUMMARY
+      - name: Logs on failure
+        if: failure()
+        run: |
+          docker ps -a
+          docker logs --tail 80 nextcloud-aio-nextcloud || true
+          docker exec nextcloud-aio-nextcloud tail -n 60 /mnt/ncdata/nextcloud.log || true
+
+  integration-authentik:
+    # Semi real-world: a real authentik (Docker) pushes users and groups to Nextcloud over SCIM, with the
+    # documented setup (user UUID as userName), through authentik's own REST API.
+    name: Nextcloud stable35 provisioned by authentik
+    runs-on: ubuntu-24.04
+    services:
+      # PostgreSQL, as a real instance would use: SQLite allows one writer, and authentik sends parallel requests.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: nextcloud
+          POSTGRES_PASSWORD: nextcloud
+          POSTGRES_DB: nextcloud
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - name: Checkout Nextcloud server
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: nextcloud/server
+          ref: stable35
+          submodules: true
+          path: server
+      - name: Checkout app
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: server/apps/scim_server
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: '8.4'
+          extensions: ctype, curl, dom, fileinfo, gd, intl, mbstring, openssl, pdo_pgsql, posix, xml, zip
+          coverage: none
+      - name: Install Nextcloud
+        working-directory: server
+        run: |
+          php occ maintenance:install --database=pgsql --database-host=127.0.0.1 --database-name=nextcloud --database-user=nextcloud --database-pass=nextcloud --admin-user=admin --admin-pass=admin
+          php occ app:enable scim_server
+      - name: Start Nextcloud (reachable from the authentik containers)
+        run: NC_DIR=$PWD/server NC_BIND=0.0.0.0 NC_TRUSTED=host.docker.internal NC_URL=http://127.0.0.1:8089 server/apps/scim_server/tests/integration/setup.sh
+      - name: authentik provisions Nextcloud (and the latencies are measured)
+        env:
+          TIMINGS_JSON: ${{ runner.temp }}/timings.json
+        run: NC_DIR=$PWD/server SCIM_TEST_DISPOSABLE_INSTANCE=1 server/apps/scim_server/tests/authentik/run.sh
+      - name: Upload the measured latencies
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: timings
+          path: ${{ runner.temp }}/timings.json
+          if-no-files-found: ignore
+      - name: Logs on failure
+        if: failure()
+        run: |
+          tail -n 80 server/data/nextcloud.log || true
+          tail -n 30 /tmp/scim-nc.log || true
+

@@ -18,3 +18,9 @@ updates:
     groups:
       dev-tools:
         patterns: ['*']
+
+  # Playwright for the browser test and screenshots.
+  - package-ecosystem: npm
+    directory: /tests/integration
+    schedule:
+      interval: weekly

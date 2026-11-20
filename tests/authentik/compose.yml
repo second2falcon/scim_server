@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: 2026 SCIM Server contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# A real authentik (PostgreSQL, server, worker) for tests/authentik/run.sh, adapted from authentik's
+# lifecycle/container/compose.yml. Throw-away credentials, nothing is persisted. The admin API token is
+# AK_TOKEN; the containers can reach the Nextcloud on the host as host.docker.internal.
+services:
+  postgresql:
+    image: docker.io/library/postgres:16-alpine
+    environment:
+      POSTGRES_DB: authentik
+      POSTGRES_USER: authentik
+      POSTGRES_PASSWORD: ci-authentik-db
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -d authentik -U authentik']
+      interval: 5s
+      retries: 20
+      timeout: 5s
+  server:
+    image: ghcr.io/goauthentik/server:${AUTHENTIK_TAG:-2026.8.6}
+    command: server
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    environment: &ak
+      AUTHENTIK_POSTGRESQL__HOST: postgresql
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: ci-authentik-db
+      AUTHENTIK_SECRET_KEY: ci-secret-key-not-a-secret-0123456789abcdef
+      AUTHENTIK_BOOTSTRAP_PASSWORD: ci-akadmin-pass
+      AUTHENTIK_BOOTSTRAP_TOKEN: ${AK_TOKEN:?set AK_TOKEN}
+      AUTHENTIK_DISABLE_UPDATE_CHECK: 'true'
+      AUTHENTIK_DISABLE_STARTUP_ANALYTICS: 'true'
+      AUTHENTIK_ERROR_REPORTING__ENABLED: 'false'
+    ports:
+      - 127.0.0.1:9000:9000
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    shm_size: 512mb
+  worker:
+    image: ghcr.io/goauthentik/server:${AUTHENTIK_TAG:-2026.8.6}
+    command: worker
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    environment: *ak
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    shm_size: 512mb

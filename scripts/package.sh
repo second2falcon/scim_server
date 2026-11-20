@@ -49,4 +49,7 @@ archive="build/scim_server-$version.tar.gz"
 tar -C "$stage" -czf "$archive" scim_server
 outside=$(tar -tzf "$archive" | grep -v -e '^scim_server/' -e '^scim_server$' -e '^$' || true)
 [[ -z "$outside" ]] || fail "archive has entries outside scim_server/: $outside"
+# Belt and braces: whatever the lists above say, no tests, CI files, dev tooling or test tooling in a release.
+dev=$(tar -tzf "$archive" | grep -E '/(tests|docs|scripts|screenshots|node_modules|vendor|build|\.github)(/|$)|/(composer\.(json|lock)|psalm\.xml|package\.json)$' || true)
+[[ -z "$dev" ]] || fail "development files in the archive: $dev"
 echo "$archive"

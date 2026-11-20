@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 SCIM Server contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# CI-only tweak on top of all-in-one/manual-install/latest.yml (the real AIO containers): a fixed container name for
+# `docker exec`. Nothing else is changed: like a real AIO, the instance reports https (OVERWRITEPROTOCOL=https and
+# OVERWRITEHOST=NC_DOMAIN come from latest.yml) and sits behind a TLS reverse proxy, which CI starts (nginx).
+services:
+  nextcloud-aio-nextcloud:
+    container_name: nextcloud-aio-nextcloud
