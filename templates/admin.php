@@ -11,7 +11,8 @@ declare(strict_types=1);
 /** @var \OCP\IL10N $l */
 ?>
 <div id="scim-server" class="section"
-	data-settings-url="<?php p($_['settingsUrl']); ?>" data-tokens-url="<?php p($_['tokensUrl']); ?>">
+	data-settings-url="<?php p($_['settingsUrl']); ?>" data-tokens-url="<?php p($_['tokensUrl']); ?>"
+	data-revoke-label="<?php p($l->t('Revoke')); ?>">
 	<h2><?php p($l->t('SCIM Server')); ?></h2>
 	<p class="settings-hint"><?php p($l->t('Lets an identity provider such as authentik provision, update, disable and delete accounts and groups.')); ?></p>
 
@@ -55,7 +56,7 @@ declare(strict_types=1);
 		<label for="scim-managed"><?php p($l->t('Only manage accounts and groups that were created through SCIM')); ?></label>
 	</p>
 	<p class="settings-hint"><?php p($l->t('When this is off, the identity provider sees every account and group in Nextcloud and can take over existing ones.')); ?></p>
-	<h3><?php p($l->t('Group filter')); ?></h3>
+	<h3><?php p($l->t('Groups')); ?></h3>
 	<p>
 		<label><?php p($l->t('Only create groups whose name matches this regular expression (empty: all groups)')); ?>
 			<input type="text" id="scim-group-regex" value="<?php p($_['groupRegex']); ?>" placeholder="^nextcloud-">

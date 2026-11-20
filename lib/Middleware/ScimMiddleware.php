@@ -65,6 +65,10 @@ class ScimMiddleware extends Middleware {
 	}
 
 	public function afterException($controller, $methodName, \Exception $exception): Response {
+		if ($controller instanceof ScimController && $exception instanceof \OCP\DB\Exception && $this->isBusy($exception)) {
+			// A busy database (SQLite allows one writer, or a deadlock) is temporary: authentik and others retry on 503.
+			$exception = new ScimException(503, 'The database is busy, try again');
+		}
 		if (!$controller instanceof ScimController || !$exception instanceof ScimException) {
 			throw $exception;
 		}
@@ -73,6 +77,14 @@ class ScimMiddleware extends Middleware {
 		if ($exception->status === 401) {
 			$response->addHeader('WWW-Authenticate', 'Bearer');
 		}
+		if ($exception->status === 503) {
+			$response->addHeader('Retry-After', '2');
+		}
 		return $response;
+	}
+
+	private function isBusy(\OCP\DB\Exception $e): bool {
+		return in_array($e->getReason(), [\OCP\DB\Exception::REASON_DEADLOCK, \OCP\DB\Exception::REASON_LOCK_WAIT_TIMEOUT], true)
+			|| str_contains($e->getMessage(), 'database is locked');
 	}
 }

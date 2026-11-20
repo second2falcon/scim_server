@@ -31,6 +31,12 @@
 		$('scim-status').textContent = r.ok ? '✓' : (r.json.error || '✗')
 	}))
 
+	const revoke = (btn) => confirmed(async () => {
+		if ((await call(root.dataset.tokensUrl + '/' + btn.dataset.id, 'DELETE')).ok) {
+			btn.closest('li').remove()
+		}
+	})
+
 	$('scim-create').addEventListener('click', confirmed(async () => {
 		const r = await call(root.dataset.tokensUrl, 'POST', { label: $('scim-label').value })
 		if (!r.ok) {
@@ -40,13 +46,17 @@
 		box.querySelector('code').textContent = r.json.token
 		box.hidden = false
 		const li = document.createElement('li')
-		li.textContent = $('scim-label').value || 'token'
+		const name = document.createElement('strong')
+		name.textContent = $('scim-label').value || 'token'
+		const btn = document.createElement('button')
+		btn.type = 'button'
+		btn.className = 'scim-revoke'
+		btn.dataset.id = r.json.id
+		btn.textContent = root.dataset.revokeLabel || 'Revoke'
+		btn.addEventListener('click', revoke(btn))
+		li.append(name, ' ', btn)
 		$('scim-tokens').appendChild(li)
 	}))
 
-	document.querySelectorAll('.scim-revoke').forEach((btn) => btn.addEventListener('click', confirmed(async () => {
-		if ((await call(root.dataset.tokensUrl + '/' + btn.dataset.id, 'DELETE')).ok) {
-			btn.closest('li').remove()
-		}
-	})))
+	document.querySelectorAll('.scim-revoke').forEach((btn) => btn.addEventListener('click', revoke(btn)))
 })()

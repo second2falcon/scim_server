@@ -110,6 +110,13 @@ class UserService {
 			$user = $this->users->createUser($uid, $password);
 		} catch (\InvalidArgumentException|HintException $e) { // invalid user id, or a password policy rejecting the password
 			throw new ScimException(400, $e->getMessage(), 'invalidValue');
+		} catch (\Throwable $e) {
+			// Two parallel requests for the same account (an IdP's workers do this) both pass the check above and the
+			// second one fails in the database: that is a conflict, not a server error.
+			if ($this->users->userExists($uid)) {
+				throw new ScimException(409, "User $uid already exists", 'uniqueness');
+			}
+			throw $e;
 		}
 		if (!$user instanceof IUser) {
 			throw new ScimException(400, "Cannot create user $uid", 'invalidValue');

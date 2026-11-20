@@ -164,7 +164,14 @@ class GroupService {
 			return $this->stub($gid);
 		}
 		$this->resolve(Patch::memberIds($body['members'] ?? [])); // fail before creating, not after: no empty groups left behind
-		$group = $this->groups->createGroup($full);
+		try {
+			$group = $this->groups->createGroup($full);
+		} catch (\Throwable $e) { // a parallel request created it first
+			if ($this->byName($full) !== null) {
+				throw new ScimException(409, "Group $name already exists", 'uniqueness');
+			}
+			throw $e;
+		}
 		if (!$group instanceof IGroup) {
 			throw new ScimException(400, "Cannot create group $name", 'invalidValue');
 		}

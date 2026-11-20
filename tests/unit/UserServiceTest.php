@@ -256,4 +256,22 @@ class UserServiceTest extends TestCase {
 		$this->store->expects($this->never())->method('duePurges');
 		$this->assertSame(0, $this->svc->purgeDue());
 	}
+
+	public function testParallelCreateOfTheSameAccountIsAConflictNotAServerError(): void {
+		$this->um->method('userExists')->willReturnOnConsecutiveCalls(false, true); // free at first, taken once ours failed
+		$this->um->method('createUser')->willThrowException(new \RuntimeException('UNIQUE constraint failed: oc_users.uid'));
+		try {
+			$this->svc->create(['userName' => 'ann']);
+			$this->fail('expected 409');
+		} catch (ScimException $e) {
+			$this->assertSame(409, $e->status);
+		}
+	}
+
+	public function testOtherCreateFailuresStayErrors(): void {
+		$this->um->method('userExists')->willReturn(false);
+		$this->um->method('createUser')->willThrowException(new \RuntimeException('disk full'));
+		$this->expectException(\RuntimeException::class);
+		$this->svc->create(['userName' => 'ann']);
+	}
 }
