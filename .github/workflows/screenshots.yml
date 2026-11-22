@@ -1,0 +1,76 @@
+# SPDX-FileCopyrightText: 2026 SCIM Server contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Refresh the screenshots of the App Store listing: runs the browser test (tests/integration/browser.mjs) against a
+# real Nextcloud, copies its store screenshots into screenshots/ and opens a pull request when they changed.
+# appinfo/info.xml points at screenshots/*.png in the repository (raw.githubusercontent.com), so merging that pull
+# request (or running this before a release) is all that is needed for the store page. Start it by hand:
+# Actions -> Update screenshots -> Run workflow.
+name: Update screenshots
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  screenshots:
+    name: Screenshots from Nextcloud stable35
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Nextcloud server
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: nextcloud/server
+          ref: stable35
+          submodules: true
+          path: server
+      - name: Checkout app
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: server/apps/scim_server
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: '8.4'
+          extensions: ctype, curl, dom, fileinfo, gd, intl, mbstring, openssl, pdo_sqlite, posix, sqlite3, xml, zip
+          coverage: none
+      - name: Install Nextcloud
+        working-directory: server
+        run: |
+          php occ maintenance:install --database=sqlite --admin-user=admin --admin-pass=admin
+          php occ app:enable scim_server
+      - name: Start Nextcloud
+        run: NC_DIR=$PWD/server server/apps/scim_server/tests/integration/setup.sh
+      - name: Browser test and screenshots
+        working-directory: server/apps/scim_server/tests/integration
+        run: |
+          npm install --no-package-lock --no-audit --no-fund --ignore-scripts
+          node node_modules/playwright/cli.js install --with-deps chromium
+          SKIP_SCIM_CALL=1 SCREENSHOT_DIR=$RUNNER_TEMP/screenshots node browser.mjs
+      - name: Open a pull request with the new screenshots
+        working-directory: server/apps/scim_server
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p screenshots
+          cp "$RUNNER_TEMP"/screenshots/store/*.png screenshots/
+          git add screenshots
+          if git diff --cached --quiet; then echo "The screenshots did not change."; exit 0; fi
+          branch="screenshots/update-$GITHUB_RUN_ID"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git commit -q -m "Update the App Store screenshots"
+          git push origin "$branch"
+          gh pr create --base main --head "$branch" --title "Update the App Store screenshots" \
+            --body "Screenshots made by the *Update screenshots* workflow (run $GITHUB_RUN_ID) from the browser test on Nextcloud stable35. They are shown on the App Store page through appinfo/info.xml." \
+            || echo "::warning::The branch $branch is pushed but no pull request could be opened (enable 'Allow GitHub Actions to create and approve pull requests' in Settings -> Actions -> General), open it by hand."
+      - name: Keep the screenshots as an artifact too
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: screenshots
+          path: ${{ runner.temp }}/screenshots
+          if-no-files-found: ignore

@@ -251,6 +251,9 @@ SCIM_TEST_DISPOSABLE_INSTANCE=1 NC_DIR=/path/to/installed/server tests/integrati
 Run the end-to-end suite **only against a throw-away Nextcloud**: it creates an administrator with a known password and a
 SCIM token, switches to immediate deletion and deletes accounts.
 
+The screenshots of the App Store page are in `screenshots/` and come from the browser test (`tests/integration/browser.mjs`): run
+**Actions → Update screenshots** to make fresh ones; it opens a pull request when they changed. `appinfo/info.xml` points at them.
+
 CI runs the same checks, plus the end-to-end suite on Nextcloud 33 (SQLite), 34 (SQLite) and 35 (PostgreSQL).
 
 Licence: AGPL-3.0-or-later.
