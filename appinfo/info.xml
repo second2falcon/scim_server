@@ -27,6 +27,8 @@ Users still sign in through your SSO app (user_oidc or user_saml); this app only
 	<website>https://github.com/second2falcon/scim_server</website>
 	<bugs>https://github.com/second2falcon/scim_server/issues</bugs>
 	<repository type="git">https://github.com/second2falcon/scim_server.git</repository>
+	<screenshot>https://raw.githubusercontent.com/second2falcon/scim_server/main/screenshots/1-connection-and-deprovisioning.png</screenshot>
+	<screenshot>https://raw.githubusercontent.com/second2falcon/scim_server/main/screenshots/2-groups.png</screenshot>
 	<dependencies>
 		<php min-version="8.2" max-version="8.5"/>
 		<nextcloud min-version="33" max-version="35"/>
