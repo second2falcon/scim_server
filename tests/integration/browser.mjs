@@ -28,6 +28,14 @@ async function shot(page, name, locator = null) {
 	console.log(`       screenshot ${path}`)
 }
 
+/** App Store screenshot: stable file name, cropped to a region (clip) of the page. Saved in SCREENSHOT_DIR/store/. */
+async function storeShot(page, name, clip) {
+	mkdirSync(`${dir}/store`, { recursive: true })
+	await page.waitForLoadState('networkidle').catch(() => {})
+	await page.screenshot({ path: `${dir}/store/${name}.png`, clip })
+	console.log(`       store screenshot ${dir}/store/${name}.png`)
+}
+
 const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 1440, height: 2200 }, timezoneId: 'Europe/Amsterdam', locale: 'en-GB' })
 const page = await context.newPage()
 page.on('pageerror', (e) => check(false, 'no JavaScript errors', e.message))
@@ -78,6 +86,21 @@ await shot(page, 'admin-settings-saved')
 await page.reload()
 check(await page.inputValue('#scim-mode') === 'disable_purge' && await page.inputValue('#scim-days') === '14', 'delete mode and days are kept')
 check(await page.inputValue('#scim-group-regex') === '^nc-' && await page.inputValue('#scim-group-prefix') === 'SAML_' && await page.inputValue('#scim-adopt-regex') === '^adopt-', 'group filter, prefix and adopt list are kept')
+
+// The screenshots of the App Store listing (and the repository's screenshots/ folder): the SCIM section with example
+// settings, in two parts. Nothing secret is on the page: the plain token only exists right after it is created.
+const sec = await section.boundingBox()
+const groups = await page.locator('#scim-server h3', { hasText: 'Groups' }).boundingBox()
+if (sec && groups) {
+	const pad = 16
+	const x = Math.max(0, sec.x - pad)
+	const width = sec.width + 2 * pad
+	await storeShot(page, '1-connection-and-deprovisioning', { x, y: Math.max(0, sec.y - pad), width, height: groups.y - sec.y + pad })
+	await storeShot(page, '2-groups', { x, y: groups.y - pad, width, height: sec.y + sec.height - groups.y + 2 * pad })
+	check(true, 'store screenshots saved')
+} else {
+	check(false, 'store screenshots saved', 'the SCIM section or the Groups heading was not found')
+}
 
 console.log('Settings: an invalid regular expression is refused')
 await page.fill('#scim-group-regex', '(unclosed')
