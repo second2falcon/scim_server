@@ -1,6 +1,6 @@
 # SCIM Server for Nextcloud
 
-Let your identity provider (authentik, Okta, Microsoft Entra ID, ...) manage Nextcloud accounts through **SCIM 2.0**.
+Let your identity provider (tested: authentik and Microsoft Entra ID; other SCIM 2.0 clients such as Okta should work) manage Nextcloud accounts through **SCIM 2.0**.
 Nextcloud already has a SCIM *client* (Nextcloud as the directory); this is the other direction: the IdP is the directory
 and Nextcloud follows it. It runs entirely inside Nextcloud, no extra service needed.
 
