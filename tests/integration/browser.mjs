@@ -36,7 +36,7 @@ async function storeShot(page, name, clip) {
 	console.log(`       store screenshot ${dir}/store/${name}.png`)
 }
 
-const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 1440, height: 2200 }, timezoneId: 'Europe/Amsterdam', locale: 'en-GB' })
+const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 1440, height: Number(process.env.VIEWPORT_HEIGHT ?? 2200) }, timezoneId: 'Europe/Amsterdam', locale: 'en-GB' })
 const page = await context.newPage()
 page.on('pageerror', (e) => check(false, 'no JavaScript errors', e.message))
 await page.goto(`${nc}/index.php/login`)
@@ -89,7 +89,18 @@ check(await page.inputValue('#scim-group-regex') === '^nc-' && await page.inputV
 
 // The screenshots of the App Store listing (and the repository's screenshots/ folder): the SCIM section with example
 // settings, in two parts. Nothing secret is on the page: the plain token only exists right after it is created.
-const sec = await section.boundingBox()
+// Pages differ in length (All-in-One has more above the section): make the viewport tall enough for the whole section,
+// so nothing scrolls and the crop regions are inside the image.
+await section.scrollIntoViewIfNeeded()
+let sec = await section.boundingBox()
+if (sec) {
+	const needed = Math.ceil(sec.y + sec.height + 64)
+	if (needed > page.viewportSize().height) {
+		await page.setViewportSize({ width: 1440, height: needed })
+		await page.waitForTimeout(500)
+		sec = await section.boundingBox()
+	}
+}
 const groups = await page.locator('#scim-server h3', { hasText: 'Groups' }).boundingBox()
 if (sec && groups) {
 	const pad = 16
