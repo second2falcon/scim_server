@@ -251,8 +251,7 @@ SCIM_TEST_DISPOSABLE_INSTANCE=1 NC_DIR=/path/to/installed/server tests/integrati
 Run the end-to-end suite **only against a throw-away Nextcloud**: it creates an administrator with a known password and a
 SCIM token, switches to immediate deletion and deletes accounts.
 
-The screenshots of the App Store page are in `screenshots/` and come from the browser test (`tests/integration/browser.mjs`): run
-**Actions → Update screenshots** to make fresh ones; it opens a pull request when they changed (this needs *Settings → Actions → General → Allow GitHub Actions to create and approve pull requests*; without it the workflow only pushes the branch `screenshots/update-<run>` and says so). `appinfo/info.xml` points at them.
+The screenshots of the App Store page are in `screenshots/` and come from the browser test (`tests/integration/browser.mjs`), which saves them as `store/*.png` in the screenshots artifact of the CI jobs. To refresh them, download the artifact of the *Nextcloud stable35* job, copy the files from its `store/` folder into `screenshots/` and commit them. `appinfo/info.xml` points at them.
 
 CI runs the same checks, plus the end-to-end suite on Nextcloud 33 (SQLite), 34 (SQLite) and 35 (PostgreSQL).
 

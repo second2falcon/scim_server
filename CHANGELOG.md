@@ -12,5 +12,5 @@ First release. This app was written entirely with AI (Claude Code) and is tested
 - **Safe by default**: SCIM only sees and changes accounts and groups it created; administrators and the `admin` group are protected (more groups with `protected_groups`); SCIM is refused over plain HTTP; the endpoints fail closed; bearer tokens are stored hashed, throttled on failure and need password confirmation to create or revoke; requests that change data are logged.
 - **Parallel requests**: when an IdP's workers create the same account or group at the same time, the second request gets `409` (not a server error); a busy database (for example SQLite's single writer, or a deadlock) is answered with `503` and `Retry-After`, which IdPs retry.
 - `occ scim:token:create`.
-- App Store screenshots, made by the browser test in CI (`screenshots/`, refreshed by the *Update screenshots* workflow).
+- App Store screenshots, made by the browser test in CI (`screenshots/`).
 - Tested with authentik (OpenID Connect login) and Microsoft Entra ID (SAML login). The README has the setup for both.
